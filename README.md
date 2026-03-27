@@ -1,2 +1,2 @@
-# team-2
-Prompt Engineering AI - Team 2
+# Team PathFinder
+Prompt Engineering AI - Team APOLLO
