@@ -44,7 +44,7 @@ jobs:
         env:
           ENVIRONMENT: test
           SECRET_KEY: test-secret-key-for-ci-only
-          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/pathfinder
           REDIS_URL: redis://localhost:6379/0
           OPENAI_API_KEY: sk-test-placeholder
         run: pytest tests/ -v --tb=short
