@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, PostgresDsn, field_validator
+from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,9 +42,7 @@ class Settings(BaseSettings):
         return v
 
     # ── Database ──────────────────────────────────────────────────────────────
-    DATABASE_URL: PostgresDsn = (  # type: ignore[assignment]
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/pathfinder"
-    )
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/pathfinder"
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
     DATABASE_POOL_TIMEOUT: int = 30
