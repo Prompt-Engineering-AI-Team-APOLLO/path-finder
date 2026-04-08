@@ -1,0 +1,41 @@
+# Virtual environment — builder stage reinstalls deps clean
+.venv/
+venv/
+env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Test / coverage artifacts
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+tests/
+
+# Local secrets — NEVER bake into an image
+.env
+.env.local
+.env.*.local
+
+# Editor and OS noise
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Compose files (not needed inside the image)
+docker-compose*.yml
+
+# Docs / tooling
+docs/
+README.md
+Makefile

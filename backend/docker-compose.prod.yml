@@ -1,0 +1,21 @@
+# Production overrides for docker-compose.yml
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  api:
+    build:
+      target: production
+    ports:
+      - "0.0.0.0:8000:8000"   # nginx/Caddy terminates TLS in front
+    environment:
+      ENVIRONMENT: production
+      LOG_FORMAT: json
+    volumes: []                # no hot-reload mounts in prod
+    restart: always
+
+  db:
+    ports: []                  # never expose Postgres publicly
+    restart: always
+
+  redis:
+    ports: []                  # never expose Redis publicly
+    restart: always
