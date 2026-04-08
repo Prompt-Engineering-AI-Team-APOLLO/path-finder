@@ -1,7 +1,14 @@
 name: Deploy Backend to AWS EC2
 
-# Triggers: push to main that touches anything inside backend/
 on:
+  # Runs tests on every PR targeting main — blocks merge if tests fail
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+
+  # Runs tests + deploys when a PR is merged into main
   push:
     branches:
       - main
