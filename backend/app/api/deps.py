@@ -1,5 +1,6 @@
 """FastAPI dependency injection wiring."""
 
+import uuid
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -67,7 +68,10 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user = await user_svc.get_user(user_id)  # type: ignore[arg-type]
+    try:
+        user = await user_svc.get_user(uuid.UUID(user_id))
+    except (ValueError, AttributeError):
+        raise credentials_exception
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
     return user
