@@ -2,7 +2,8 @@ import React from 'react';
 import Badge, { BadgeVariant } from './Badge';
 
 export interface TravelStyleCardProps {
-  image: string;
+  image?: string;
+  imageCss?: string;
   tag: string;
   tagVariant?: BadgeVariant;
   title: string;
@@ -14,6 +15,7 @@ export interface TravelStyleCardProps {
 
 export default function TravelStyleCard({
   image,
+  imageCss,
   tag,
   tagVariant = 'curated',
   title,
@@ -46,21 +48,21 @@ export default function TravelStyleCard({
       className={`group ${className}`}
       aria-pressed={selected}
     >
-      {/* Background image */}
-      <img
-        src={image}
-        alt={title}
-        draggable={false}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          transition: 'transform 500ms ease',
-        }}
-        className="group-hover:scale-105"
-      />
+      {/* Background image or CSS gradient */}
+      {image ? (
+        <img
+          src={image}
+          alt={title}
+          draggable={false}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 500ms ease' }}
+          className="group-hover:scale-105"
+        />
+      ) : (
+        <div
+          style={{ position: 'absolute', inset: 0, background: imageCss ?? 'var(--color-bg-card)', transition: 'transform 500ms ease' }}
+          className="group-hover:scale-[1.02]"
+        />
+      )}
 
       {/* Gradient overlay — stronger at bottom */}
       <div

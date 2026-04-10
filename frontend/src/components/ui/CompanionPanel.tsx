@@ -21,10 +21,14 @@ export interface CompanionPanelProps {
   messages: Message[];
   onSendMessage?: (message: string) => void;
   assistantName?: string;
+  assistantSubtitle?: string;
   assistantAvatarSrc?: string;
+  headerIcon?: React.ReactNode;
   isOnline?: boolean;
+  inputPlaceholder?: string;
   isTyping?: boolean;
   quickActions?: QuickActionItem[];
+  quickActionsLabel?: string;
   inputDisabled?: boolean;
   inputLoading?: boolean;
   className?: string;
@@ -67,10 +71,14 @@ export default function CompanionPanel({
   messages,
   onSendMessage,
   assistantName = 'Pathfinder AI',
+  assistantSubtitle,
   assistantAvatarSrc,
+  headerIcon,
   isOnline = true,
+  inputPlaceholder,
   isTyping = false,
   quickActions,
+  quickActionsLabel,
   inputDisabled = false,
   inputLoading = false,
   className = '',
@@ -103,23 +111,42 @@ export default function CompanionPanel({
         }}
       >
         <div className="flex items-center gap-3">
-          <div className="relative">
-            <Avatar
-              src={assistantAvatarSrc}
-              name={assistantName}
-              size="md"
-            />
-            {/* Gradient ring around AI avatar */}
-            <div
-              style={{
-                position: 'absolute',
-                inset: -2,
-                borderRadius: '50%',
-                background: 'var(--gradient-primary)',
-                zIndex: -1,
-              }}
-              aria-hidden
-            />
+          <div className="relative shrink-0">
+            {headerIcon ? (
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  background: 'var(--gradient-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  boxShadow: 'var(--shadow-primary)',
+                }}
+              >
+                {headerIcon}
+              </div>
+            ) : (
+              <>
+                <Avatar
+                  src={assistantAvatarSrc}
+                  name={assistantName}
+                  size="md"
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: -2,
+                    borderRadius: '50%',
+                    background: 'var(--gradient-primary)',
+                    zIndex: -1,
+                  }}
+                  aria-hidden
+                />
+              </>
+            )}
           </div>
           <div>
             <p
@@ -132,6 +159,11 @@ export default function CompanionPanel({
             >
               {assistantName}
             </p>
+            {assistantSubtitle ? (
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', marginTop: 2 }}>
+                {assistantSubtitle}
+              </p>
+            ) : (
             <p
               style={{
                 color: isOnline ? 'var(--color-green)' : 'var(--color-text-muted)',
@@ -155,6 +187,7 @@ export default function CompanionPanel({
               />
               {isOnline ? 'Online · Ready to help' : 'Offline'}
             </p>
+            )}
           </div>
         </div>
       </div>
@@ -232,23 +265,33 @@ export default function CompanionPanel({
           style={{
             padding: '8px 16px',
             borderTop: '1px solid var(--color-border)',
-            display: 'flex',
-            gap: 6,
-            flexWrap: 'nowrap',
-            overflowX: 'auto',
             flexShrink: 0,
-            scrollbarWidth: 'none',
           }}
-          className="[&::-webkit-scrollbar]:hidden"
         >
-          {quickActions.map((action, i) => (
-            <QuickAction
-              key={i}
-              icon={action.icon}
-              label={action.label}
-              onClick={action.onClick}
-            />
-          ))}
+          {quickActionsLabel && (
+            <p style={{
+              color: 'var(--color-text-muted)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-bold)',
+              letterSpacing: 'var(--tracking-wider)',
+              textTransform: 'uppercase',
+              marginBottom: 8,
+            }}>
+              {quickActionsLabel}
+            </p>
+          )}
+          <div
+            style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}
+          >
+            {quickActions.map((action, i) => (
+              <QuickAction
+                key={i}
+                icon={action.icon}
+                label={action.label}
+                onClick={action.onClick}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -262,6 +305,7 @@ export default function CompanionPanel({
       >
         <ChatInput
           onSend={onSendMessage}
+          placeholder={inputPlaceholder}
           disabled={inputDisabled}
           loading={inputLoading}
         />

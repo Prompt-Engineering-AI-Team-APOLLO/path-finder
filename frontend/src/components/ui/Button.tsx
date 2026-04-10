@@ -1,7 +1,7 @@
 import React from 'react';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'icon';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'icon' | 'dark';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   icon?: React.ReactNode;
@@ -47,6 +47,13 @@ const variantMap: Record<string, string> = {
     'bg-transparent text-[var(--color-text-secondary)]',
     'hover:text-[var(--color-text-primary)]',
     'hover:bg-[var(--color-bg-glass)]',
+  ].join(' '),
+
+  dark: [
+    'bg-[#0F0F28] text-white',
+    'hover:bg-[#1a1a40]',
+    'active:scale-[0.97]',
+    'shadow-[var(--shadow-md)]',
   ].join(' '),
 };
 

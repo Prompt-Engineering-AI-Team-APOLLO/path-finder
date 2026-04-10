@@ -6,6 +6,7 @@ export interface PageLayoutProps {
   children: React.ReactNode;
   leftWidth?: number;
   rightWidth?: number;
+  bg?: string;
   className?: string;
 }
 
@@ -15,6 +16,7 @@ export default function PageLayout({
   children,
   leftWidth = 320,
   rightWidth = 300,
+  bg,
   className = '',
 }: PageLayoutProps) {
   const hasLeft = Boolean(leftPanel);
@@ -26,7 +28,7 @@ export default function PageLayout({
         display: 'flex',
         height: 'calc(100vh - 64px)',
         overflow: 'hidden',
-        background: 'var(--color-bg-base)',
+        background: bg ?? 'var(--color-bg-base)',
         fontFamily: 'var(--font-sans)',
       }}
       className={className}

@@ -1,22 +1,28 @@
 import React from 'react';
 
 export interface EditorPickCardProps {
-  image: string;
+  image?: string;
+  imageCss?: string;
   label?: string;
   title: string;
   description?: string;
   ctaLabel?: string;
   onCta?: () => void;
+  secondaryCtaLabel?: string;
+  onSecondaryCta?: () => void;
   className?: string;
 }
 
 export default function EditorPickCard({
   image,
+  imageCss,
   label = "Editor's Pick",
   title,
   description,
   ctaLabel = 'Explore',
   onCta,
+  secondaryCtaLabel,
+  onSecondaryCta,
   className = '',
 }: EditorPickCardProps) {
   return (
@@ -32,21 +38,20 @@ export default function EditorPickCard({
       }}
       className={`group ${className}`}
     >
-      {/* Full-bleed background image */}
-      <img
-        src={image}
-        alt={title}
-        draggable={false}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          transition: 'transform 500ms ease',
-        }}
-        className="group-hover:scale-105"
-      />
+      {/* Full-bleed background image or gradient */}
+      {image ? (
+        <img
+          src={image}
+          alt={title}
+          draggable={false}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 500ms ease' }}
+          className="group-hover:scale-105"
+        />
+      ) : (
+        <div
+          style={{ position: 'absolute', inset: 0, background: imageCss ?? 'var(--color-bg-card)' }}
+        />
+      )}
 
       {/* Dark gradient overlay */}
       <div
@@ -122,30 +127,59 @@ export default function EditorPickCard({
               {description}
             </p>
           )}
-          {onCta && (
-            <button
-              type="button"
-              onClick={onCta}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                color: 'var(--color-primary-light)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--weight-semibold)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                transition: 'var(--transition-base)',
-              }}
-              className="hover:opacity-80"
-            >
-              {ctaLabel}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </button>
+          {(onCta || onSecondaryCta) && (
+            <div className="flex items-center gap-3">
+              {onCta && (
+                <button
+                  type="button"
+                  onClick={onCta}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 18px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'var(--gradient-primary)',
+                    color: 'white',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-semibold)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-base)',
+                    boxShadow: 'var(--shadow-primary)',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                  className="hover:opacity-90"
+                >
+                  {ctaLabel}
+                </button>
+              )}
+              {onSecondaryCta && (
+                <button
+                  type="button"
+                  onClick={onSecondaryCta}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 18px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'rgba(255,255,255,0.12)',
+                    color: 'white',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 'var(--weight-medium)',
+                    border: '1px solid rgba(255,255,255,0.25)',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-base)',
+                    backdropFilter: 'blur(8px)',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                  className="hover:bg-[rgba(255,255,255,0.18)]"
+                >
+                  {secondaryCtaLabel}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
