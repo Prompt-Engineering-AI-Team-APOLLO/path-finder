@@ -1,0 +1,11 @@
+[build]
+builder        = "dockerfile"
+dockerfilePath = "Dockerfile"
+dockerContext  = "."
+buildTarget    = "production"
+
+[deploy]
+healthcheckPath         = "/api/v1/health"
+healthcheckTimeout      = 300
+restartPolicyType       = "on_failure"
+restartPolicyMaxRetries = 3
