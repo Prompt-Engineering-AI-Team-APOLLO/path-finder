@@ -3,7 +3,8 @@ import React from 'react';
 export interface CategoryCardProps {
   title: string;
   subtitle?: string;
-  image: string;
+  image?: string;
+  imageCss?: string;
   icon?: React.ReactNode;
   onClick?: () => void;
   selected?: boolean;
@@ -14,6 +15,7 @@ export default function CategoryCard({
   title,
   subtitle,
   image,
+  imageCss,
   icon,
   onClick,
   selected = false,
@@ -41,21 +43,33 @@ export default function CategoryCard({
       }}
       className={`group text-left ${className}`}
     >
-      {/* Background image */}
-      <img
-        src={image}
-        alt={title}
-        draggable={false}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          transition: 'transform 400ms ease',
-        }}
-        className="group-hover:scale-105"
-      />
+      {/* Background image or CSS gradient */}
+      {image ? (
+        <img
+          src={image}
+          alt={title}
+          draggable={false}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            transition: 'transform 400ms ease',
+          }}
+          className="group-hover:scale-105"
+        />
+      ) : imageCss ? (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: imageCss,
+            transition: 'transform 400ms ease',
+          }}
+          className="group-hover:scale-105"
+        />
+      ) : null}
 
       {/* Gradient overlay */}
       <div

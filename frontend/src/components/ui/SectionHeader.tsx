@@ -5,6 +5,7 @@ export interface SectionHeaderProps {
   heading: string;
   subheading?: string;
   action?: React.ReactNode;
+  theme?: 'dark' | 'light';
   className?: string;
 }
 
@@ -13,8 +14,11 @@ export default function SectionHeader({
   heading,
   subheading,
   action,
+  theme = 'dark',
   className = '',
 }: SectionHeaderProps) {
+  const headingColor = theme === 'light' ? 'var(--color-text-dark)' : 'var(--color-text-primary)';
+  const subColor = theme === 'light' ? 'var(--color-text-dark-secondary)' : 'var(--color-text-secondary)';
   return (
     <div
       style={{ fontFamily: 'var(--font-sans)' }}
@@ -42,7 +46,7 @@ export default function SectionHeader({
         <div>
           <h2
             style={{
-              color: 'var(--color-text-primary)',
+              color: headingColor,
               fontSize: 'var(--text-xl)',
               fontWeight: 'var(--weight-bold)',
               letterSpacing: 'var(--tracking-tight)',
@@ -55,7 +59,7 @@ export default function SectionHeader({
           {subheading && (
             <p
               style={{
-                color: 'var(--color-text-secondary)',
+                color: subColor,
                 fontSize: 'var(--text-sm)',
                 marginTop: 2,
               }}

@@ -148,4 +148,39 @@
   --z-overlay:  300;
   --z-modal:    400;
   --z-toast:    500;
+
+  /* ── LIGHT SURFACE TOKENS ── */
+  --color-bg-page-light:    #F0EFFF;
+  --color-bg-surface:       #FFFFFF;
+  --color-text-dark:        #0F0F28;
+  --color-text-dark-secondary: #4B4B6A;
+  --color-text-dark-muted:  #8888A8;
+  --color-border-light:     rgba(112, 71, 235, 0.14);
+  --color-border-light-strong: rgba(112, 71, 235, 0.32);
+}
+
+/* ─────────────────────────────────────────────
+   LIGHT SURFACE SCOPE
+   Wrap any section in .surface-light to flip
+   all component CSS variables to a light theme.
+───────────────────────────────────────────── */
+.surface-light {
+  --color-bg-input:         #FFFFFF;
+  --color-bg-card:          #FFFFFF;
+  --color-bg-card-hover:    #F5F3FF;
+  --color-bg-glass:         rgba(112, 71, 235, 0.05);
+  --color-bg-glass-hover:   rgba(112, 71, 235, 0.09);
+  --color-bg-elevated:      #FAFAFF;
+  --color-text-primary:     #0F0F28;
+  --color-text-secondary:   #4B4B6A;
+  --color-text-muted:       #8888A8;
+  --color-text-link:        #7047EB;
+  --color-border:           rgba(112, 71, 235, 0.12);
+  --color-border-subtle:    rgba(112, 71, 235, 0.06);
+  --color-border-medium:    rgba(112, 71, 235, 0.20);
+  --color-border-strong:    rgba(112, 71, 235, 0.38);
+  --color-border-primary:   rgba(112, 71, 235, 0.50);
+  --shadow-sm:              0 1px 4px rgba(112, 71, 235, 0.08);
+  --shadow-md:              0 4px 16px rgba(112, 71, 235, 0.12);
+  --shadow-card:            0 2px 12px rgba(112, 71, 235, 0.10);
 }
