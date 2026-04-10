@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import HTTPException, status
 from jose import JWTError
 
@@ -37,7 +39,7 @@ class AuthService:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Not a refresh token",
             )
-        user = await self._user_svc.get_user(payload["sub"])
+        user = await self._user_svc.get_user(uuid.UUID(payload["sub"]))
         return self._issue_tokens(user)
 
     async def _authenticate(self, email: str, password: str) -> User:
