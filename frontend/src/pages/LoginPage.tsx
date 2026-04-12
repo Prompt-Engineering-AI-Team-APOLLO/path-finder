@@ -1,5 +1,12 @@
-import React, { useState, FormEvent } from 'react';
-import { Logo, Button, Input, Checkbox, Divider, AvatarGroup } from '../components/ui';
+import React, { useState, type FormEvent } from 'react';
+import { Logo, Button, Input, Checkbox, AvatarGroup } from '../components/ui';
+
+type AuthMode = 'signin' | 'signup';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+
+interface LoginPageProps {
+  onSignInSuccess?: (payload: { email: string; remember: boolean }) => void;
+}
 
 /* ── Helpers ── */
 function validateEmail(v: string) {
@@ -11,47 +18,19 @@ function validatePw(v: string) {
   if (!/\d/.test(v)) return 'Must contain a number';
 }
 
-/* ── Social button — rendered inside .surface-light ── */
-function SocialBtn({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: 1,
-        height: 44,
-        borderRadius: 'var(--radius-lg)',
-        background: 'transparent',
-        border: '1.5px solid var(--color-border-medium)',
-        color: 'var(--color-text-secondary)',
-        fontSize: 'var(--text-sm)',
-        fontWeight: 'var(--weight-medium)',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        transition: 'var(--transition-base)',
-        fontFamily: 'var(--font-sans)',
-      }}
-      className="hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-glass)] hover:text-[var(--color-text-primary)]"
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
 /* ─────────────────────────────────────────────────────
    LoginPage
    Ocean/teal gradient background → centred two-panel card
 ───────────────────────────────────────────────────── */
-export default function LoginPage() {
+export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [remember, setRemember] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [errors, setErrors] = useState<{ email?: string; password?: string; confirmPassword?: string; form?: string }>({});
   const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const avatars = [
     { name: 'Sophie M' },
@@ -59,17 +38,51 @@ export default function LoginPage() {
     { name: 'Priya V' },
   ];
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const next: typeof errors = {};
+    setSuccessMessage('');
     if (!email) next.email = 'Email is required';
     else if (!validateEmail(email)) next.email = 'Enter a valid email';
     if (!password) next.password = 'Password is required';
     else { const e = validatePw(password); if (e) next.password = e; }
+    if (mode === 'signup') {
+      if (!confirmPassword) next.confirmPassword = 'Please confirm your password';
+      else if (confirmPassword !== password) next.confirmPassword = 'Passwords do not match';
+    }
     setErrors(next);
     if (Object.keys(next).length > 0) return;
+
     setLoading(true);
-    setTimeout(() => setLoading(false), 1600);
+    try {
+      const endpoint = mode === 'signup' ? '/auth/credentials/signup' : '/auth/credentials/signin';
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setErrors({ form: data?.detail || 'Request failed. Please try again.' });
+        return;
+      }
+
+      if (mode === 'signup') {
+        setSuccessMessage('Sign up successful. You can sign in now.');
+        setMode('signin');
+        setPassword('');
+        setConfirmPassword('');
+        setErrors({});
+      } else {
+        setSuccessMessage('Sign in successful.');
+        onSignInSuccess?.({ email, remember });
+      }
+    } catch {
+      setErrors({ form: 'Cannot connect to backend. Ensure API is running on port 8000.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -203,8 +216,15 @@ export default function LoginPage() {
             Welcome Back
           </h2>
           <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 28px' }}>
-            Please enter your details to sign in.
+            {mode === 'signup' ? 'Create your account with email and password.' : 'Please enter your details to sign in.'}
           </p>
+
+          {errors.form && (
+            <p style={{ color: '#dc2626', fontSize: 'var(--text-sm)', margin: '0 0 14px' }}>{errors.form}</p>
+          )}
+          {successMessage && (
+            <p style={{ color: '#16a34a', fontSize: 'var(--text-sm)', margin: '0 0 14px' }}>{successMessage}</p>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }} noValidate>
@@ -232,13 +252,15 @@ export default function LoginPage() {
                 <label style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)' }}>
                   Password
                 </label>
-                <button
-                  type="button"
-                  style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'var(--font-sans)' }}
-                  className="hover:opacity-70"
-                >
-                  Forgot Password?
-                </button>
+                {mode === 'signin' && (
+                  <button
+                    type="button"
+                    style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'var(--font-sans)' }}
+                    className="hover:opacity-70"
+                  >
+                    Forgot Password?
+                  </button>
+                )}
               </div>
               <Input
                 type="password"
@@ -250,6 +272,23 @@ export default function LoginPage() {
               />
             </div>
 
+            {mode === 'signup' && (
+              <div>
+                <Input
+                  label="Confirm Password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={e => {
+                    setConfirmPassword(e.target.value);
+                    setErrors(p => ({ ...p, confirmPassword: undefined }));
+                  }}
+                  error={errors.confirmPassword}
+                  autoComplete="new-password"
+                />
+              </div>
+            )}
+
             {/* Remember me */}
             <Checkbox
               label="Remember for 30 days"
@@ -259,47 +298,26 @@ export default function LoginPage() {
 
             {/* Sign In */}
             <Button type="submit" variant="primary" size="lg" fullWidth loading={loading}>
-              Sign In
+              {mode === 'signup' ? 'Create Account' : 'Sign In'}
             </Button>
           </form>
 
-          {/* Divider */}
-          <div style={{ margin: '20px 0' }}>
-            <Divider label="Or continue with" />
-          </div>
-
-          {/* Social buttons */}
-          <div style={{ display: 'flex', gap: 12 }}>
-            <SocialBtn
-              label="Google"
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                </svg>
-              }
-            />
-            <SocialBtn
-              label="Apple"
-              icon={
-                <svg width="16" height="16" viewBox="0 0 814 1000" fill="currentColor">
-                  <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 312.8 10.7 128 46.4 62.9c19.2-35.6 56.4-57.3 97.7-57.3 34.4 0 63.4 20.6 87.4 50.1 22 27.5 40.9 65.4 62.3 65.4s40.9-22.6 73.1-50.1c32.2-27.5 70.4-42.8 109.2-42.8 58.6 0 105.2 31 133.6 87.5 10.2 20.9 17.2 44.5 17.2 71.3 0 62.9-43.8 114.2-108.2 153.9z"/>
-                </svg>
-              }
-            />
-          </div>
-
           {/* Footer link */}
           <p style={{ textAlign: 'center', color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', marginTop: 24 }}>
-            Don't have an account?{' '}
+            {mode === 'signup' ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
               type="button"
+              onClick={() => {
+                setMode(mode === 'signup' ? 'signin' : 'signup');
+                setPassword('');
+                setConfirmPassword('');
+                setErrors({});
+                setSuccessMessage('');
+              }}
               style={{ color: 'var(--color-primary)', fontWeight: 'var(--weight-semibold)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)' }}
               className="hover:opacity-70"
             >
-              Sign up for free
+              {mode === 'signup' ? 'Sign in' : 'Sign up for free'}
             </button>
           </p>
         </div>

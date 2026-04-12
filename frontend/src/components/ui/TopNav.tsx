@@ -1,6 +1,6 @@
 import React from 'react';
 import Logo from './Logo';
-import StepIndicator, { Step } from './StepIndicator';
+import StepIndicator, { type Step } from './StepIndicator';
 import Avatar from './Avatar';
 
 export interface TopNavProps {
