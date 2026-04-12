@@ -65,9 +65,7 @@ export default function App() {
     setPage('login')
   }
 
-  const finalPage: Page = session
-    ? (page === 'login' ? 'home' : page)
-    : (page === 'home' || page === 'plan' || page === 'confirm' ? 'login' : page)
+  const finalPage: Page = page
 
   return (
     <div style={{ minHeight: '100svh', display: 'flex', flexDirection: 'column' }}>

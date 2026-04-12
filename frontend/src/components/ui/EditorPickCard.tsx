@@ -1,5 +1,3 @@
-import React from 'react';
-
 export interface EditorPickCardProps {
   image?: string;
   imageCss?: string;
