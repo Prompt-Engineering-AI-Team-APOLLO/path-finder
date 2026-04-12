@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: Literal["json", "text"] = "json"
 
+    # ── Google OAuth ──────────────────────────────────────────────────────────
+    GOOGLE_CLIENT_ID: str = "917176408605-f398ke6be8jpuurdlgt1g48cna0rt5n8.apps.googleusercontent.com"
+
     # ── Email ─────────────────────────────────────────────────────────────────
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587

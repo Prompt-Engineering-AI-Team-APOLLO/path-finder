@@ -63,7 +63,6 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 def user_payload() -> dict[str, Any]:
     return {
         "email": "test@example.com",
-        "username": "testuser",
         "full_name": "Test User",
         "password": "Secure123",
     }
