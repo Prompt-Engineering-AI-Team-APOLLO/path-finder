@@ -246,7 +246,14 @@ class BookingRead(BaseModel):
 class BookingModifyRequest(BaseModel):
     """Fields that can be changed on an existing booking.
 
-    To change flights entirely, cancel and rebook.
+    - **cabin_class**: upgrade or downgrade; price is recalculated proportionally.
+    - **new_departure_date**: reschedule outbound flight to a different date.
+      The closest available departure time to the original is selected and price
+      is recalculated from the new offer.
+    - **new_return_date**: reschedule return leg (only valid on round-trip bookings).
+    - **contact_email / contact_phone**: update contact details only.
+
+    At least one field must be provided.
     """
 
     cabin_class: CabinClass | None = Field(
@@ -254,12 +261,34 @@ class BookingModifyRequest(BaseModel):
         description="Upgrade or downgrade cabin class. Price is recalculated.",
         examples=["business"],
     )
+    new_departure_date: date | None = Field(
+        default=None,
+        description="Reschedule the outbound flight to this date (YYYY-MM-DD). "
+                    "Must be today or in the future. Price is recalculated.",
+        examples=["2026-07-10"],
+    )
+    new_return_date: date | None = Field(
+        default=None,
+        description="Reschedule the return flight to this date (round-trip only). "
+                    "Must be after new_departure_date (or existing departure date). "
+                    "Price is recalculated.",
+        examples=["2026-07-17"],
+    )
     contact_email: EmailStr | None = Field(default=None, examples=["new@example.com"])
     contact_phone: str | None = Field(default=None, examples=["+1-555-9999"])
 
     model_config = {
         "json_schema_extra": {
-            "examples": [{"cabin_class": "business", "contact_phone": "+1-555-9999"}]
+            "examples": [
+                {
+                    "new_departure_date": "2026-07-10",
+                    "new_return_date": "2026-07-17",
+                },
+                {
+                    "cabin_class": "business",
+                    "contact_phone": "+1-555-9999",
+                },
+            ]
         }
     }
 
