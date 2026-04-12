@@ -1,3 +1,4 @@
+import React from 'react';
 import Badge, { type BadgeVariant } from './Badge';
 
 export interface TravelStyleCardProps {
