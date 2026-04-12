@@ -30,7 +30,6 @@ _RETURN_DATE = (date.today() + timedelta(days=37)).isoformat()
 
 _USER = {
     "email": "flyer@example.com",
-    "username": "flyer",
     "full_name": "Flight Tester",
     "password": "Secure123",
 }
@@ -299,7 +298,7 @@ async def test_book_round_trip(client: AsyncClient):
     """
     Round-trip booking sets return_flight_number and sums outbound + return prices.
     """
-    user = {**_USER, "email": "rt@example.com", "username": "rtuser"}
+    user = {**_USER, "email": "rt@example.com"}
     token = await _register_and_login(client, user)
 
     resp = await client.post(
@@ -336,7 +335,7 @@ async def test_book_requires_authentication(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_book_invalid_offer_id_returns_400(client: AsyncClient):
-    user = {**_USER, "email": "bad@example.com", "username": "badoffer"}
+    user = {**_USER, "email": "bad@example.com"}
     token = await _register_and_login(client, user)
     resp = await client.post(
         "/api/v1/flights/bookings",
@@ -361,7 +360,7 @@ async def test_list_my_bookings(client: AsyncClient):
     GET /api/v1/flights/bookings
     Expected: 200 with a list of the user's own bookings.
     """
-    user = {**_USER, "email": "list@example.com", "username": "listuser"}
+    user = {**_USER, "email": "list@example.com"}
     token = await _register_and_login(client, user)
 
     # Make two bookings on different routes
@@ -417,7 +416,7 @@ async def test_lookup_booking_public(client: AsyncClient):
           ...
         }
     """
-    user = {**_USER, "email": "lookup@example.com", "username": "lookupuser"}
+    user = {**_USER, "email": "lookup@example.com"}
     token = await _register_and_login(client, user)
     book_resp = await client.post(
         "/api/v1/flights/bookings",
@@ -466,7 +465,7 @@ async def test_modify_cabin_class_upgrades_price(client: AsyncClient):
           ...
         }
     """
-    user = {**_USER, "email": "mod@example.com", "username": "moduser"}
+    user = {**_USER, "email": "mod@example.com"}
     token = await _register_and_login(client, user)
     book_resp = await client.post(
         "/api/v1/flights/bookings",
@@ -494,7 +493,7 @@ async def test_modify_cabin_class_upgrades_price(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_modify_contact_details(client: AsyncClient):
-    user = {**_USER, "email": "modcontact@example.com", "username": "modcontact"}
+    user = {**_USER, "email": "modcontact@example.com"}
     token = await _register_and_login(client, user)
     book_resp = await client.post(
         "/api/v1/flights/bookings",
@@ -529,8 +528,8 @@ async def test_modify_requires_authentication(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_modify_other_users_booking_returns_403(client: AsyncClient):
-    owner = {**_USER, "email": "owner2@example.com", "username": "owner2"}
-    intruder = {**_USER, "email": "intruder@example.com", "username": "intruder"}
+    owner = {**_USER, "email": "owner2@example.com"}
+    intruder = {**_USER, "email": "intruder@example.com"}
     owner_token = await _register_and_login(client, owner)
     intruder_token = await _register_and_login(client, intruder)
 
@@ -570,7 +569,7 @@ async def test_modify_departure_date_changes_flight_and_price(client: AsyncClien
           ...
         }
     """
-    user = {**_USER, "email": "datemod@example.com", "username": "datemod"}
+    user = {**_USER, "email": "datemod@example.com"}
     token = await _register_and_login(client, user)
     book_resp = await client.post(
         "/api/v1/flights/bookings",
@@ -599,7 +598,7 @@ async def test_modify_departure_date_changes_flight_and_price(client: AsyncClien
 
 @pytest.mark.asyncio
 async def test_modify_past_date_returns_422(client: AsyncClient):
-    user = {**_USER, "email": "pastdate@example.com", "username": "pastdate"}
+    user = {**_USER, "email": "pastdate@example.com"}
     token = await _register_and_login(client, user)
     book_resp = await client.post(
         "/api/v1/flights/bookings",
@@ -623,7 +622,7 @@ async def test_modify_past_date_returns_422(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_modify_with_no_changes_returns_422(client: AsyncClient):
-    user = {**_USER, "email": "nochange@example.com", "username": "nochange"}
+    user = {**_USER, "email": "nochange@example.com"}
     token = await _register_and_login(client, user)
     book_resp = await client.post(
         "/api/v1/flights/bookings",
@@ -662,7 +661,7 @@ async def test_cancel_booking(client: AsyncClient):
           "message": "Your booking has been cancelled successfully."
         }
     """
-    user = {**_USER, "email": "cancel@example.com", "username": "canceluser"}
+    user = {**_USER, "email": "cancel@example.com"}
     token = await _register_and_login(client, user)
     book_resp = await client.post(
         "/api/v1/flights/bookings",
@@ -692,7 +691,7 @@ async def test_cancel_booking(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_cancel_already_cancelled_returns_409(client: AsyncClient):
-    user = {**_USER, "email": "cancel2@example.com", "username": "cancel2"}
+    user = {**_USER, "email": "cancel2@example.com"}
     token = await _register_and_login(client, user)
     book_resp = await client.post(
         "/api/v1/flights/bookings",
@@ -718,8 +717,8 @@ async def test_cancel_requires_authentication(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_cancel_other_users_booking_returns_403(client: AsyncClient):
-    owner = {**_USER, "email": "cowner@example.com", "username": "cowner"}
-    intruder = {**_USER, "email": "cintruder@example.com", "username": "cintruder"}
+    owner = {**_USER, "email": "cowner@example.com"}
+    intruder = {**_USER, "email": "cintruder@example.com"}
     owner_token = await _register_and_login(client, owner)
     intruder_token = await _register_and_login(client, intruder)
 
@@ -758,7 +757,7 @@ async def test_full_booking_journey(client: AsyncClient):
     5. Cancel the booking
     6. Verify the booking shows status = "cancelled"
     """
-    user = {**_USER, "email": "journey@example.com", "username": "journey"}
+    user = {**_USER, "email": "journey@example.com"}
     token = await _register_and_login(client, user)
     headers = _auth(token)
 

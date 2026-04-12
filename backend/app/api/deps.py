@@ -15,7 +15,6 @@ from app.models.user import User
 from app.services.ai_service import AIService
 from app.services.auth_service import AuthService
 from app.services.flight_service import FlightService
-from app.services.user_credentials_service import UserCredentialsService
 from app.services.user_service import UserService
 from app.services.vector_service import VectorService
 
@@ -34,11 +33,6 @@ def get_user_service(db: DBDep) -> UserService:
 def get_auth_service(user_svc: Annotated[UserService, Depends(get_user_service)]) -> AuthService:
     return AuthService(user_svc)
 
-
-def get_user_credentials_service(db: DBDep) -> UserCredentialsService:
-    return UserCredentialsService(db)
-
-
 def get_ai_service() -> AIService:
     return AIService()
 
@@ -53,9 +47,6 @@ def get_flight_service(db: DBDep) -> FlightService:
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
-UserCredentialsServiceDep = Annotated[
-    UserCredentialsService, Depends(get_user_credentials_service)
-]
 AIServiceDep = Annotated[AIService, Depends(get_ai_service)]
 VectorServiceDep = Annotated[VectorService, Depends(get_vector_service)]
 FlightServiceDep = Annotated[FlightService, Depends(get_flight_service)]

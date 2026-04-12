@@ -1,7 +1,6 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user_credentials import UserCredentials
 from app.repositories.base import BaseRepository
 
 
