@@ -1,3 +1,4 @@
+
 export interface HotelCardProps {
   image: string;
   name: string;
