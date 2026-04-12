@@ -1,6 +1,6 @@
 import { useState, Fragment } from 'react';
 import type { FormEvent } from 'react';
-import { Logo, Button, Input, Checkbox, Divider, AvatarGroup } from '../components/ui';
+import { Logo, Button, Input, Checkbox, AvatarGroup } from '../components/ui';
 
 type AuthMode = 'signin' | 'signup';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
