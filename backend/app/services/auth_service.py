@@ -1,5 +1,6 @@
 import uuid
 
+import httpx
 from fastapi import HTTPException, status
 from jose import JWTError
 
@@ -12,7 +13,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User
-from app.schemas.auth import LoginRequest, LoginResponse, RefreshRequest, TokenResponse
+from app.schemas.auth import GoogleLoginRequest, LoginRequest, LoginResponse, RefreshRequest, TokenResponse
 from app.schemas.user import UserRead
 from app.services.user_service import UserService
 
@@ -23,6 +24,34 @@ class AuthService:
 
     async def login(self, data: LoginRequest) -> LoginResponse:
         user = await self._authenticate(data.email, data.password)
+        tokens = self._issue_tokens(user)
+        return LoginResponse(tokens=tokens, user=UserRead.model_validate(user))
+
+    async def google_login(self, data: GoogleLoginRequest) -> LoginResponse:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"id_token": data.id_token},
+            )
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Google token",
+            )
+        payload = resp.json()
+        if payload.get("aud") != settings.GOOGLE_CLIENT_ID:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token audience mismatch",
+            )
+        email: str = payload.get("email", "")
+        full_name: str | None = payload.get("name")
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Google account has no email",
+            )
+        user = await self._user_svc.find_or_create_google_user(email, full_name)
         tokens = self._issue_tokens(user)
         return LoginResponse(tokens=tokens, user=UserRead.model_validate(user))
 

@@ -22,3 +22,7 @@ class RefreshRequest(BaseModel):
 class LoginResponse(BaseModel):
     tokens: TokenResponse
     user: UserRead
+
+
+class GoogleLoginRequest(BaseModel):
+    id_token: str

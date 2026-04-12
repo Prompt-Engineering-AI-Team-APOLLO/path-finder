@@ -8,7 +8,6 @@ from app.core.constants import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 
 class UserBase(BaseModel):
     email: EmailStr
-    username: str = Field(min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
     full_name: str | None = Field(default=None, max_length=255)
 
 
@@ -50,7 +49,6 @@ class UserReadPublic(BaseModel):
     """Subset safe to expose publicly."""
 
     id: uuid.UUID
-    username: str
     full_name: str | None
 
     model_config = {"from_attributes": True}
