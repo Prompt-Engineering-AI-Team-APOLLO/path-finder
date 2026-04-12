@@ -1,4 +1,3 @@
-
 export interface ActivityCardProps {
   image: string;
   tag?: string;

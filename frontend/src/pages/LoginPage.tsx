@@ -1,4 +1,5 @@
-import React, { useState, type FormEvent } from 'react';
+import { useState, Fragment } from 'react';
+import type { FormEvent } from 'react';
 import { Logo, Button, Input, Checkbox, AvatarGroup } from '../components/ui';
 
 type AuthMode = 'signin' | 'signup';
@@ -326,7 +327,7 @@ export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
       {/* ── Footer links ── */}
       <div style={{ marginTop: 28, display: 'flex', gap: 8, alignItems: 'center' }}>
         {['PRIVACY POLICY', 'TERMS OF SERVICE', 'HELP CENTER'].map((link, i) => (
-          <React.Fragment key={link}>
+          <Fragment key={link}>
             {i > 0 && <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 'var(--text-xs)' }}>·</span>}
             <button
               type="button"
@@ -335,7 +336,7 @@ export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
             >
               {link}
             </button>
-          </React.Fragment>
+          </Fragment>
         ))}
       </div>
     </div>
