@@ -1,4 +1,3 @@
-import React from 'react';
 import Logo from './Logo';
 import StepIndicator, { type Step } from './StepIndicator';
 import Avatar from './Avatar';
