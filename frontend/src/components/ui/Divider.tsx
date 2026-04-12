@@ -1,3 +1,4 @@
+
 export interface DividerProps {
   label?: string;
   orientation?: 'horizontal' | 'vertical';
