@@ -1,5 +1,3 @@
-import React from 'react';
-
 export interface ActivityCardProps {
   image: string;
   tag?: string;

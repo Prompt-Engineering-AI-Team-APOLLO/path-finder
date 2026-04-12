@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import Avatar from './Avatar';
-import ChatMessage, { MessageRole } from './ChatMessage';
+import ChatMessage, { type MessageRole } from './ChatMessage';
 import ChatInput from './ChatInput';
 import QuickAction from './QuickAction';
 
