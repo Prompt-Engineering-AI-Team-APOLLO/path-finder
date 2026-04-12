@@ -1,5 +1,4 @@
-import React from 'react';
-import Badge, { BadgeVariant } from './Badge';
+import Badge, { type BadgeVariant } from './Badge';
 
 export interface TravelStyleCardProps {
   image?: string;

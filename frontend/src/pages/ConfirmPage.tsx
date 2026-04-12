@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   TopNav,
   PageLayout,
@@ -317,7 +317,7 @@ export default function ConfirmPage() {
               boxShadow: 'var(--shadow-sm)',
             }}
           >
-            <div style={{ display: 'flex', items: 'center', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <div
                 style={{
                   width: 44,
