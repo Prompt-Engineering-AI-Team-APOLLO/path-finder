@@ -18,7 +18,6 @@ async def seed() -> None:
     async with AsyncSessionLocal() as session:
         admin = User(
             email="admin@pathfinder.ai",
-            username="admin",
             full_name="Admin User",
             hashed_password=hash_password("Admin1234!"),
             role="admin",

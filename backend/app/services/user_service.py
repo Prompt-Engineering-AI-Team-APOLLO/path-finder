@@ -19,14 +19,8 @@ class UserService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A user with this email already exists",
             )
-        if await self._repo.username_exists(data.username):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This username is already taken",
-            )
         user = User(
             email=data.email,
-            username=data.username,
             full_name=data.full_name,
             hashed_password=hash_password(data.password),
         )
@@ -40,6 +34,18 @@ class UserService:
 
     async def get_by_email(self, email: str) -> User | None:
         return await self._repo.get_by_email(email)
+
+    async def find_or_create_google_user(self, email: str, full_name: str | None) -> User:
+        user = await self._repo.get_by_email(email)
+        if user:
+            return user
+        user = User(
+            email=email,
+            full_name=full_name,
+            hashed_password="GOOGLE_OAUTH_NO_PASSWORD",
+            is_verified=True,
+        )
+        return await self._repo.create(user)
 
     async def list_users(self, page: int, page_size: int) -> tuple[list[User], int]:
         offset = (page - 1) * page_size

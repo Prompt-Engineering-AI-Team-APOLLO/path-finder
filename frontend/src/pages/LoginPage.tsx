@@ -1,5 +1,20 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment, useEffect, useRef } from 'react';
 import type { FormEvent } from 'react';
+
+declare global {
+  interface Window {
+    google: {
+      accounts: {
+        id: {
+          initialize: (cfg: { client_id: string; callback: (r: { credential: string }) => void }) => void;
+          renderButton: (el: HTMLElement, cfg: object) => void;
+        };
+      };
+    };
+  }
+}
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
 import { Logo, Button, Input, Checkbox, AvatarGroup } from '../components/ui';
 
 type AuthMode = 'signin' | 'signup';
@@ -33,6 +48,66 @@ export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+  const googleCallbackRef = useRef<(r: { credential: string }) => void>(() => {});
+
+  // Always point to the latest closure so the Google SDK calls fresh state
+  googleCallbackRef.current = async (response: { credential: string }) => {
+    setLoading(true);
+    setErrors({});
+    setSuccessMessage('');
+    try {
+      const res = await fetch(`${API_BASE}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token: response.credential }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = data?.detail;
+        const formError = Array.isArray(detail)
+          ? detail.map((e: { msg: string }) => e.msg).join(', ')
+          : detail || 'Google sign-in failed.';
+        setErrors({ form: formError });
+        return;
+      }
+      setSuccessMessage('Sign in successful.');
+      onSignInSuccess?.({ email: data.user?.email ?? '', remember });
+    } catch {
+      setErrors({ form: 'Cannot connect to backend. Ensure API is running on port 8000.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const init = () => {
+      if (!window.google || !googleBtnRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (r) => googleCallbackRef.current(r),
+      });
+      window.google.accounts.id.renderButton(googleBtnRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: googleBtnRef.current.offsetWidth || 352,
+        text: 'continue_with',
+      });
+    };
+
+    if (document.getElementById('gsi-script')) {
+      init();
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'gsi-script';
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = init;
+    document.body.appendChild(script);
+  }, []);
+
   const avatars = [
     { name: 'Sophie M' },
     { name: 'James K' },
@@ -56,16 +131,21 @@ export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
 
     setLoading(true);
     try {
-      const endpoint = mode === 'signup' ? '/auth/credentials/signup' : '/auth/credentials/signin';
+      const endpoint = mode === 'signup' ? '/users' : '/auth/login';
+      const body = { email, password };
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setErrors({ form: data?.detail || 'Request failed. Please try again.' });
+        const detail = data?.detail;
+        const formError = Array.isArray(detail)
+          ? detail.map((e: { msg: string }) => e.msg).join(', ')
+          : detail || 'Request failed. Please try again.';
+        setErrors({ form: formError });
         return;
       }
 
@@ -302,6 +382,16 @@ export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
               {mode === 'signup' ? 'Create Account' : 'Sign In'}
             </Button>
           </form>
+
+          {/* ── Divider ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 4px' }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--color-border, #e5e7eb)' }} />
+            <span style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>or continue with</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--color-border, #e5e7eb)' }} />
+          </div>
+
+          {/* ── Google button ── */}
+          <div ref={googleBtnRef} style={{ width: '100%', marginBottom: 4 }} />
 
           {/* Footer link */}
           <p style={{ textAlign: 'center', color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', marginTop: 24 }}>
