@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.services.ai_service import AIService
 from app.services.auth_service import AuthService
+from app.services.flight_service import FlightService
 from app.services.user_credentials_service import UserCredentialsService
 from app.services.user_service import UserService
 from app.services.vector_service import VectorService
@@ -46,6 +47,10 @@ def get_vector_service(ai: Annotated[AIService, Depends(get_ai_service)]) -> Vec
     return VectorService(ai)
 
 
+def get_flight_service(db: DBDep) -> FlightService:
+    return FlightService(db)
+
+
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 UserCredentialsServiceDep = Annotated[
@@ -53,6 +58,7 @@ UserCredentialsServiceDep = Annotated[
 ]
 AIServiceDep = Annotated[AIService, Depends(get_ai_service)]
 VectorServiceDep = Annotated[VectorService, Depends(get_vector_service)]
+FlightServiceDep = Annotated[FlightService, Depends(get_flight_service)]
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 

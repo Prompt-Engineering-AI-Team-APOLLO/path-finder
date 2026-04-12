@@ -1,0 +1,256 @@
+"""FlightService — business logic for the flights feature.
+
+Responsibilities
+----------------
+- Delegate flight searches to FlightMockProvider (swap for real API if needed)
+- Persist, retrieve, modify, and cancel FlightBooking records
+- Enforce ownership rules (only the booking owner can modify/cancel)
+"""
+
+import secrets
+import uuid
+from datetime import date
+
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.flight import FlightBooking
+from app.repositories.booking import BookingRepository
+from app.schemas.flight import (
+    BookingCancelResponse,
+    BookingModifyRequest,
+    BookingRead,
+    CabinClass,
+    FlightBookRequest,
+    FlightSearchRequest,
+    FlightSearchResponse,
+)
+from app.services import flight_mock_provider as mock
+
+
+class FlightService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._repo = BookingRepository(session)
+
+    # ── Search ────────────────────────────────────────────────────────────────
+
+    async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        """Search for available flights.  No DB interaction — uses mock provider."""
+        if req.departure_date < date.today():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="departure_date must be today or in the future",
+            )
+        if req.return_date and req.return_date <= req.departure_date:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="return_date must be after departure_date",
+            )
+        if req.origin == req.destination:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="origin and destination must be different",
+            )
+
+        outbound = mock.search(
+            req.origin, req.destination, req.departure_date,
+            req.passengers, req.cabin_class,
+        )
+        if not outbound:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"No flights available from {req.origin} to {req.destination}. "
+                    "Check GET /api/v1/flights/routes for supported routes."
+                ),
+            )
+
+        return_flights = None
+        if req.return_date:
+            return_flights = mock.search(
+                req.destination, req.origin, req.return_date,
+                req.passengers, req.cabin_class,
+            )
+
+        search_id = secrets.token_hex(8)
+        return FlightSearchResponse(
+            search_id=search_id,
+            origin=req.origin,
+            destination=req.destination,
+            departure_date=req.departure_date,
+            return_date=req.return_date,
+            passengers=req.passengers,
+            cabin_class=req.cabin_class,
+            currency="USD",
+            outbound_flights=outbound,
+            return_flights=return_flights,
+        )
+
+    # ── Book ──────────────────────────────────────────────────────────────────
+
+    async def book_flight(
+        self,
+        req: FlightBookRequest,
+        user_id: uuid.UUID | None = None,
+    ) -> FlightBooking:
+        """Create a FlightBooking from an offer.  offer_id encodes all flight data."""
+        try:
+            out = mock.decode_offer(req.outbound_offer_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid outbound_offer_id",
+            )
+
+        ret: dict | None = None
+        if req.return_offer_id:
+            try:
+                ret = mock.decode_offer(req.return_offer_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid return_offer_id",
+                )
+
+        if len(req.passengers) != out.get("total_price", 0) / out.get("price_per_person", 1) \
+                and len(req.passengers) > out.get("available_seats", 0):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Not enough seats available for the requested passenger count",
+            )
+
+        ref = await self._generate_reference()
+
+        booking = FlightBooking(
+            booking_reference=ref,
+            status="confirmed",
+            user_id=user_id,
+            # Outbound
+            outbound_flight_number=out["flight_number"],
+            outbound_airline=out["airline"],
+            outbound_airline_code=out["airline_code"],
+            outbound_origin=out["origin"],
+            outbound_destination=out["destination"],
+            outbound_origin_city=out["origin_city"],
+            outbound_destination_city=out["destination_city"],
+            outbound_departure_at=out["departure_at"],
+            outbound_arrival_at=out["arrival_at"],
+            outbound_duration_minutes=out["duration_minutes"],
+            outbound_stops=out["stops"],
+            # Return
+            return_flight_number=ret["flight_number"] if ret else None,
+            return_airline=ret["airline"] if ret else None,
+            return_airline_code=ret["airline_code"] if ret else None,
+            return_origin=ret["origin"] if ret else None,
+            return_destination=ret["destination"] if ret else None,
+            return_origin_city=ret["origin_city"] if ret else None,
+            return_destination_city=ret["destination_city"] if ret else None,
+            return_departure_at=ret["departure_at"] if ret else None,
+            return_arrival_at=ret["arrival_at"] if ret else None,
+            return_duration_minutes=ret["duration_minutes"] if ret else None,
+            return_stops=ret["stops"] if ret else None,
+            # Details
+            cabin_class=out["cabin_class"],
+            passenger_count=len(req.passengers),
+            total_price=out["total_price"] + (ret["total_price"] if ret else 0),
+            currency=out.get("currency", "USD"),
+            passengers=[p.model_dump(mode="json") for p in req.passengers],
+            contact_email=req.contact_email,
+            contact_phone=req.contact_phone,
+        )
+        return await self._repo.create(booking)
+
+    # ── Lookup ────────────────────────────────────────────────────────────────
+
+    async def get_booking(self, reference: str) -> FlightBooking:
+        """Fetch a booking by reference.  Public — no ownership check."""
+        booking = await self._repo.get_by_reference(reference)
+        if not booking:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Booking {reference!r} not found",
+            )
+        return booking
+
+    async def list_my_bookings(self, user_id: uuid.UUID) -> list[FlightBooking]:
+        """Return all bookings belonging to the authenticated user."""
+        return await self._repo.get_by_user_id(user_id)
+
+    # ── Modify ────────────────────────────────────────────────────────────────
+
+    async def modify_booking(
+        self,
+        reference: str,
+        req: BookingModifyRequest,
+        user_id: uuid.UUID,
+    ) -> FlightBooking:
+        """Modify cabin class and/or contact details on an active booking."""
+        booking = await self._require_owned_active_booking(reference, user_id)
+
+        updates: dict = {}
+
+        if req.cabin_class and req.cabin_class != booking.cabin_class:
+            old_mult = mock.CABIN_MULTIPLIERS[booking.cabin_class]
+            new_mult = mock.CABIN_MULTIPLIERS[req.cabin_class]
+            updates["cabin_class"] = req.cabin_class
+            updates["total_price"] = round(
+                booking.total_price * (new_mult / old_mult), 2
+            )
+
+        if req.contact_email:
+            updates["contact_email"] = req.contact_email
+        if req.contact_phone is not None:
+            updates["contact_phone"] = req.contact_phone
+
+        if not updates:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No changes provided",
+            )
+
+        updates["status"] = "modified"
+        return await self._repo.update(booking, updates)
+
+    # ── Cancel ────────────────────────────────────────────────────────────────
+
+    async def cancel_booking(
+        self, reference: str, user_id: uuid.UUID
+    ) -> BookingCancelResponse:
+        """Cancel an active booking owned by the requesting user."""
+        booking = await self._require_owned_active_booking(reference, user_id)
+        await self._repo.update(booking, {"status": "cancelled"})
+        return BookingCancelResponse(
+            booking_reference=reference,
+            status="cancelled",
+            message="Your booking has been cancelled successfully.",
+        )
+
+    # ── Internal helpers ──────────────────────────────────────────────────────
+
+    async def _generate_reference(self) -> str:
+        """Generate a unique 'PF-XXXXXX' booking reference."""
+        for _ in range(10):
+            chars = secrets.token_hex(3).upper()
+            ref = f"PF-{chars}"
+            if not await self._repo.reference_exists(ref):
+                return ref
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not generate a unique booking reference. Please retry.",
+        )
+
+    async def _require_owned_active_booking(
+        self, reference: str, user_id: uuid.UUID
+    ) -> FlightBooking:
+        booking = await self.get_booking(reference)
+        if booking.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to modify this booking",
+            )
+        if booking.status == "cancelled":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot modify a cancelled booking",
+            )
+        return booking
