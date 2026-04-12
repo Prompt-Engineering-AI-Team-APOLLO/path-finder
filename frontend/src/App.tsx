@@ -1,10 +1,29 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import LoginPage from './pages/LoginPage'
 import HomePage from './pages/HomePage'
 import PlanPage from './pages/PlanPage'
 import ConfirmPage from './pages/ConfirmPage'
 
 type Page = 'login' | 'home' | 'plan' | 'confirm'
+type AuthSession = {
+  email: string
+  signedInAt: string
+}
+
+const AUTH_SESSION_KEY = 'pathfinder_auth_session'
+
+const loadSession = (): AuthSession | null => {
+  const raw = localStorage.getItem(AUTH_SESSION_KEY) || sessionStorage.getItem(AUTH_SESSION_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw) as AuthSession
+  } catch {
+    localStorage.removeItem(AUTH_SESSION_KEY)
+    sessionStorage.removeItem(AUTH_SESSION_KEY)
+    return null
+  }
+}
 
 const PAGES: { id: Page; label: string }[] = [
   { id: 'login', label: 'Login' },
@@ -15,6 +34,40 @@ const PAGES: { id: Page; label: string }[] = [
 
 export default function App() {
   const [page, setPage] = useState<Page>('login')
+  const [session, setSession] = useState<AuthSession | null>(null)
+
+  useEffect(() => {
+    setSession(loadSession())
+  }, [])
+
+  const handleSignInSuccess = ({ email, remember }: { email: string; remember: boolean }) => {
+    const nextSession: AuthSession = {
+      email,
+      signedInAt: new Date().toISOString(),
+    }
+
+    if (remember) {
+      localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(nextSession))
+      sessionStorage.removeItem(AUTH_SESSION_KEY)
+    } else {
+      sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(nextSession))
+      localStorage.removeItem(AUTH_SESSION_KEY)
+    }
+
+    setSession(nextSession)
+    setPage('home')
+  }
+
+  const handleSignOut = () => {
+    localStorage.removeItem(AUTH_SESSION_KEY)
+    sessionStorage.removeItem(AUTH_SESSION_KEY)
+    setSession(null)
+    setPage('login')
+  }
+
+  const finalPage: Page = session
+    ? (page === 'login' ? 'home' : page)
+    : (page === 'home' || page === 'plan' || page === 'confirm' ? 'login' : page)
 
   return (
     <div style={{ minHeight: '100svh', display: 'flex', flexDirection: 'column' }}>
@@ -49,8 +102,8 @@ export default function App() {
               fontWeight: 600,
               fontFamily: 'var(--font-sans)',
               transition: '150ms ease',
-              background: page === p.id ? 'var(--color-primary)' : 'transparent',
-              color: page === p.id ? 'white' : 'rgba(255,255,255,0.5)',
+              background: finalPage === p.id ? 'var(--color-primary)' : 'transparent',
+              color: finalPage === p.id ? 'white' : 'rgba(255,255,255,0.5)',
             }}
           >
             {p.label}
@@ -58,10 +111,16 @@ export default function App() {
         ))}
       </nav>
 
-      {page === 'login'   && <LoginPage />}
-      {page === 'home'    && <HomePage />}
-      {page === 'plan'    && <PlanPage />}
-      {page === 'confirm' && <ConfirmPage />}
+      {finalPage === 'login'   && <LoginPage onSignInSuccess={handleSignInSuccess} />}
+      {finalPage === 'home'    && (
+        <HomePage
+          userEmail={session?.email}
+          onOpenProfile={() => setPage('home')}
+          onSignOut={handleSignOut}
+        />
+      )}
+      {finalPage === 'plan'    && <PlanPage />}
+      {finalPage === 'confirm' && <ConfirmPage />}
     </div>
   )
 }

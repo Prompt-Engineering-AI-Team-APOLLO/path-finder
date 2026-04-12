@@ -145,8 +145,15 @@ const STEPS = [
 /* ─────────────────────────────────────────────
    HomePage
 ───────────────────────────────────────────── */
-export default function HomePage() {
+interface HomePageProps {
+  userEmail?: string;
+  onOpenProfile?: () => void;
+  onSignOut?: () => void;
+}
+
+export default function HomePage({ userEmail, onOpenProfile, onSignOut }: HomePageProps) {
   const [messages, setMessages] = useState<Message[]>(MESSAGES);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
   const handleSend = (text: string) => {
     setMessages(prev => [...prev, {
@@ -210,8 +217,98 @@ export default function HomePage() {
           </h1>
         </div>
 
-        {/* Right: step indicator */}
-        <div style={{ paddingTop: 6 }}>
+        {/* Right: profile + step indicator */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, paddingTop: 6 }}>
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setIsProfileMenuOpen(prev => !prev)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                background: 'var(--color-bg-glass)',
+                border: '1px solid var(--color-border-medium)',
+                color: 'var(--color-text-primary)',
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-full)',
+                cursor: 'pointer',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-semibold)',
+              }}
+            >
+              Profile
+              <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+                {isProfileMenuOpen ? '▲' : '▼'}
+              </span>
+            </button>
+
+            {isProfileMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 10px)',
+                  right: 0,
+                  minWidth: 220,
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1px solid var(--color-border-medium)',
+                  background: '#111321',
+                  boxShadow: 'var(--shadow-lg)',
+                  overflow: 'hidden',
+                  zIndex: 30,
+                }}
+              >
+                <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+                  Signed in as
+                  <div style={{ marginTop: 3, color: 'var(--color-text-primary)', fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-sm)' }}>
+                    {userEmail || 'Traveler'}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileMenuOpen(false);
+                    onOpenProfile?.();
+                  }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--color-text-primary)',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-sm)',
+                  }}
+                >
+                  Profile
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileMenuOpen(false);
+                    onSignOut?.();
+                  }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#fca5a5',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-sm)',
+                    borderTop: '1px solid var(--color-border)',
+                  }}
+                >
+                  Sign Out
+                </button>
+              </div>
+            )}
+          </div>
+
           <StepIndicator steps={STEPS} currentStep={0} />
         </div>
       </div>

@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.services.ai_service import AIService
 from app.services.auth_service import AuthService
+from app.services.user_credentials_service import UserCredentialsService
 from app.services.user_service import UserService
 from app.services.vector_service import VectorService
 
@@ -33,6 +34,10 @@ def get_auth_service(user_svc: Annotated[UserService, Depends(get_user_service)]
     return AuthService(user_svc)
 
 
+def get_user_credentials_service(db: DBDep) -> UserCredentialsService:
+    return UserCredentialsService(db)
+
+
 def get_ai_service() -> AIService:
     return AIService()
 
@@ -43,6 +48,9 @@ def get_vector_service(ai: Annotated[AIService, Depends(get_ai_service)]) -> Vec
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+UserCredentialsServiceDep = Annotated[
+    UserCredentialsService, Depends(get_user_credentials_service)
+]
 AIServiceDep = Annotated[AIService, Depends(get_ai_service)]
 VectorServiceDep = Annotated[VectorService, Depends(get_vector_service)]
 
