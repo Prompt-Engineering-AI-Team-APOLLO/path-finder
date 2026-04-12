@@ -554,6 +554,74 @@ async def test_modify_other_users_booking_returns_403(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_modify_departure_date_changes_flight_and_price(client: AsyncClient):
+    """
+    PATCH /api/v1/flights/bookings/PF-XXXXXX
+    Request:
+        { "new_departure_date": "<date 14 days later>" }
+    Expected: 200 with updated outbound_departure_at date and recalculated total_price.
+
+    Sample response:
+        {
+          "booking_reference": "PF-A1B2C3",
+          "status": "modified",
+          "outbound_departure_at": "2026-07-10T08:00:00+00:00",
+          "total_price": 281.15,
+          ...
+        }
+    """
+    user = {**_USER, "email": "datemod@example.com", "username": "datemod"}
+    token = await _register_and_login(client, user)
+    book_resp = await client.post(
+        "/api/v1/flights/bookings",
+        json={
+            "outbound_offer_id": _get_outbound_offer_id(),
+            "passengers": [_PASSENGER],
+            "contact_email": user["email"],
+        },
+        headers=_auth(token),
+    )
+    assert book_resp.status_code == 201
+    ref = book_resp.json()["booking_reference"]
+    new_date = (date.today() + timedelta(days=44)).isoformat()
+
+    resp = await client.patch(
+        f"/api/v1/flights/bookings/{ref}",
+        json={"new_departure_date": new_date},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "modified"
+    assert body["outbound_departure_at"].startswith(new_date)
+    assert body["total_price"] > 0
+
+
+@pytest.mark.asyncio
+async def test_modify_past_date_returns_422(client: AsyncClient):
+    user = {**_USER, "email": "pastdate@example.com", "username": "pastdate"}
+    token = await _register_and_login(client, user)
+    book_resp = await client.post(
+        "/api/v1/flights/bookings",
+        json={
+            "outbound_offer_id": _get_outbound_offer_id(),
+            "passengers": [_PASSENGER],
+            "contact_email": user["email"],
+        },
+        headers=_auth(token),
+    )
+    ref = book_resp.json()["booking_reference"]
+    past = (date.today() - timedelta(days=1)).isoformat()
+
+    resp = await client.patch(
+        f"/api/v1/flights/bookings/{ref}",
+        json={"new_departure_date": past},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_modify_with_no_changes_returns_422(client: AsyncClient):
     user = {**_USER, "email": "nochange@example.com", "username": "nochange"}
     token = await _register_and_login(client, user)

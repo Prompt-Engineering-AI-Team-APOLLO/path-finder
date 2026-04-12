@@ -317,6 +317,149 @@ async def test_modify_no_changes_raises_422(svc: FlightService):
     assert exc_info.value.status_code == 422
 
 
+# ── modify_booking: date changes ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_modify_departure_date_updates_flight_and_price(svc: FlightService):
+    uid = uuid.uuid4()
+    req = FlightBookRequest(
+        outbound_offer_id=_offer_id("JFK", "LAX", _FUTURE),
+        passengers=[_PASSENGER],
+        contact_email="jane@example.com",
+    )
+    booking = await svc.book_flight(req, user_id=uid)
+    original_dep = booking.outbound_departure_at
+    original_price = booking.total_price
+    new_date = _FUTURE + timedelta(days=14)
+
+    modified = await svc.modify_booking(
+        booking.booking_reference,
+        BookingModifyRequest(new_departure_date=new_date),
+        uid,
+    )
+
+    assert modified.status == "modified"
+    # Flight date must change
+    assert modified.outbound_departure_at.date() == new_date
+    # Departure time may differ from original (different seed → different slot)
+    assert modified.outbound_departure_at != original_dep or modified.total_price != original_price
+    # Price must be a positive number
+    assert modified.total_price > 0
+
+
+@pytest.mark.asyncio
+async def test_modify_departure_date_and_cabin_class_together(svc: FlightService):
+    uid = uuid.uuid4()
+    req = FlightBookRequest(
+        outbound_offer_id=_offer_id("JFK", "LAX", _FUTURE, "economy"),
+        passengers=[_PASSENGER],
+        contact_email="jane@example.com",
+    )
+    booking = await svc.book_flight(req, user_id=uid)
+    new_date = _FUTURE + timedelta(days=10)
+
+    modified = await svc.modify_booking(
+        booking.booking_reference,
+        BookingModifyRequest(new_departure_date=new_date, cabin_class="business"),
+        uid,
+    )
+
+    assert modified.cabin_class == "business"
+    assert modified.outbound_departure_at.date() == new_date
+    assert modified.total_price > booking.total_price  # business > economy
+
+
+@pytest.mark.asyncio
+async def test_modify_return_date_on_round_trip(svc: FlightService):
+    uid = uuid.uuid4()
+    req = FlightBookRequest(
+        outbound_offer_id=_offer_id("JFK", "LAX", _FUTURE),
+        return_offer_id=_offer_id("LAX", "JFK", _FUTURE + timedelta(days=7)),
+        passengers=[_PASSENGER],
+        contact_email="jane@example.com",
+    )
+    booking = await svc.book_flight(req, user_id=uid)
+    new_return = _FUTURE + timedelta(days=14)
+
+    modified = await svc.modify_booking(
+        booking.booking_reference,
+        BookingModifyRequest(new_return_date=new_return),
+        uid,
+    )
+
+    assert modified.return_departure_at is not None
+    assert modified.return_departure_at.date() == new_return
+    assert modified.total_price > 0
+
+
+@pytest.mark.asyncio
+async def test_modify_return_date_on_one_way_raises_422(svc: FlightService):
+    from fastapi import HTTPException
+
+    uid = uuid.uuid4()
+    req = FlightBookRequest(
+        outbound_offer_id=_offer_id("JFK", "LAX", _FUTURE),
+        passengers=[_PASSENGER],
+        contact_email="jane@example.com",
+    )
+    booking = await svc.book_flight(req, user_id=uid)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.modify_booking(
+            booking.booking_reference,
+            BookingModifyRequest(new_return_date=_FUTURE + timedelta(days=7)),
+            uid,
+        )
+    assert exc_info.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_modify_past_departure_date_raises_422(svc: FlightService):
+    from fastapi import HTTPException
+
+    uid = uuid.uuid4()
+    req = FlightBookRequest(
+        outbound_offer_id=_offer_id("JFK", "LAX", _FUTURE),
+        passengers=[_PASSENGER],
+        contact_email="jane@example.com",
+    )
+    booking = await svc.book_flight(req, user_id=uid)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.modify_booking(
+            booking.booking_reference,
+            BookingModifyRequest(new_departure_date=date.today() - timedelta(days=1)),
+            uid,
+        )
+    assert exc_info.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_modify_return_before_departure_raises_422(svc: FlightService):
+    from fastapi import HTTPException
+
+    uid = uuid.uuid4()
+    req = FlightBookRequest(
+        outbound_offer_id=_offer_id("JFK", "LAX", _FUTURE),
+        return_offer_id=_offer_id("LAX", "JFK", _FUTURE + timedelta(days=7)),
+        passengers=[_PASSENGER],
+        contact_email="jane@example.com",
+    )
+    booking = await svc.book_flight(req, user_id=uid)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.modify_booking(
+            booking.booking_reference,
+            BookingModifyRequest(
+                new_departure_date=_FUTURE + timedelta(days=10),
+                new_return_date=_FUTURE + timedelta(days=5),  # before new departure
+            ),
+            uid,
+        )
+    assert exc_info.value.status_code == 422
+
+
 # ── cancel_booking ────────────────────────────────────────────────────────────
 
 

@@ -9,7 +9,7 @@ Responsibilities
 
 import secrets
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,19 +184,103 @@ class FlightService:
         req: BookingModifyRequest,
         user_id: uuid.UUID,
     ) -> FlightBooking:
-        """Modify cabin class and/or contact details on an active booking."""
+        """Modify dates, cabin class, and/or contact details on an active booking."""
         booking = await self._require_owned_active_booking(reference, user_id)
 
         updates: dict = {}
 
-        if req.cabin_class and req.cabin_class != booking.cabin_class:
-            old_mult = mock.CABIN_MULTIPLIERS[booking.cabin_class]
-            new_mult = mock.CABIN_MULTIPLIERS[req.cabin_class]
-            updates["cabin_class"] = req.cabin_class
+        # ── Resolve working dates and cabin class (may change together) ────────
+        effective_cabin = req.cabin_class or booking.cabin_class
+        effective_dep_date = req.new_departure_date or booking.outbound_departure_at.date()
+
+        # ── Validate new dates ─────────────────────────────────────────────────
+        if req.new_departure_date:
+            if req.new_departure_date < date.today():
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="new_departure_date must be today or in the future",
+                )
+
+        if req.new_return_date:
+            if booking.return_flight_number is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="This is a one-way booking — it has no return flight to reschedule",
+                )
+            if req.new_return_date <= effective_dep_date:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="new_return_date must be after the departure date",
+                )
+            if req.new_return_date < date.today():
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="new_return_date must be today or in the future",
+                )
+
+        # ── Reschedule outbound ────────────────────────────────────────────────
+        if req.new_departure_date or (req.cabin_class and req.cabin_class != booking.cabin_class):
+            new_out = self._pick_closest_offer(
+                origin=booking.outbound_origin,
+                destination=booking.outbound_destination,
+                new_date=effective_dep_date,
+                original_departure=booking.outbound_departure_at,
+                cabin_class=effective_cabin,
+                passengers=booking.passenger_count,
+            )
+            updates.update({
+                "outbound_flight_number":    new_out["flight_number"],
+                "outbound_airline":          new_out["airline"],
+                "outbound_airline_code":     new_out["airline_code"],
+                "outbound_departure_at":     datetime.fromisoformat(new_out["departure_at"]),
+                "outbound_arrival_at":       datetime.fromisoformat(new_out["arrival_at"]),
+                "outbound_duration_minutes": new_out["duration_minutes"],
+                "outbound_stops":            new_out["stops"],
+                "cabin_class":               effective_cabin,
+            })
+            outbound_price = new_out["total_price"]
+        else:
+            outbound_price = None  # unchanged
+
+        # ── Reschedule return ──────────────────────────────────────────────────
+        return_price = None
+        if req.new_return_date and booking.return_flight_number:
+            new_ret = self._pick_closest_offer(
+                origin=booking.return_origin,        # type: ignore[arg-type]
+                destination=booking.return_destination,  # type: ignore[arg-type]
+                new_date=req.new_return_date,
+                original_departure=booking.return_departure_at,
+                cabin_class=effective_cabin,
+                passengers=booking.passenger_count,
+            )
+            updates.update({
+                "return_flight_number":    new_ret["flight_number"],
+                "return_airline":          new_ret["airline"],
+                "return_airline_code":     new_ret["airline_code"],
+                "return_departure_at":     datetime.fromisoformat(new_ret["departure_at"]),
+                "return_arrival_at":       datetime.fromisoformat(new_ret["arrival_at"]),
+                "return_duration_minutes": new_ret["duration_minutes"],
+                "return_stops":            new_ret["stops"],
+            })
+            return_price = new_ret["total_price"]
+
+        # ── Recalculate total price when anything flight-related changed ───────
+        if outbound_price is not None or return_price is not None:
+            # Use new outbound price if available, else re-derive from existing total
+            if outbound_price is None:
+                # Only return date changed — split existing total by leg ratio (50/50 approx)
+                existing_out_price = (
+                    booking.total_price if not booking.return_flight_number
+                    else booking.total_price / 2
+                )
+                outbound_price = existing_out_price
+            if return_price is None and booking.return_flight_number:
+                return_price = booking.total_price / 2
             updates["total_price"] = round(
-                booking.total_price * (new_mult / old_mult), 2
+                outbound_price + (return_price or 0), 2
             )
 
+        # ── Contact detail updates ─────────────────────────────────────────────
         if req.contact_email:
             updates["contact_email"] = req.contact_email
         if req.contact_phone is not None:
@@ -226,6 +310,39 @@ class FlightService:
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
+
+    def _pick_closest_offer(
+        self,
+        origin: str,
+        destination: str,
+        new_date: date,
+        original_departure: datetime | None,
+        cabin_class: str,
+        passengers: int,
+    ) -> dict:
+        """Search the mock provider for new_date and return the offer whose
+        departure time is closest to the original flight's time-of-day.
+        Raises 404 if the route has no offers on that date."""
+        offers = mock.search(origin, destination, new_date, passengers, cabin_class)  # type: ignore[arg-type]
+        if not offers:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No flights available from {origin} to {destination} on {new_date}",
+            )
+        if original_departure is None:
+            return mock.decode_offer(offers[0].offer_id)
+
+        # Match closest hour-of-day to preserve the passenger's preferred slot
+        orig_minutes = original_departure.hour * 60 + original_departure.minute
+        best = min(
+            offers,
+            key=lambda o: abs(
+                (datetime.fromisoformat(mock.decode_offer(o.offer_id)["departure_at"]).hour * 60
+                 + datetime.fromisoformat(mock.decode_offer(o.offer_id)["departure_at"]).minute)
+                - orig_minutes
+            ),
+        )
+        return mock.decode_offer(best.offer_id)
 
     async def _generate_reference(self) -> str:
         """Generate a unique 'PF-XXXXXX' booking reference."""
