@@ -1,5 +1,3 @@
-import React from 'react';
-
 export interface HotelCardProps {
   image: string;
   name: string;
