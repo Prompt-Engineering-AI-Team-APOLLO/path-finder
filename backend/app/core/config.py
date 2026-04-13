@@ -45,10 +45,15 @@ class Settings(BaseSettings):
     DATABASE_URL: PostgresDsn = (  # type: ignore[assignment]
         "postgresql+asyncpg://postgres:postgres@localhost:5432/pathfinder"
     )
-    DATABASE_POOL_SIZE: int = 10
-    DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_SIZE: int = 5
+    DATABASE_MAX_OVERFLOW: int = 10
     DATABASE_POOL_TIMEOUT: int = 30
     DATABASE_ECHO: bool = False
+    # Set to true when connecting to Supabase or any remote Postgres that requires SSL
+    DATABASE_SSL: bool = False
+    # Set to true when connecting through pgBouncer (e.g. Supabase Transaction Pooler port 6543)
+    # Disables asyncpg's prepared statement cache, which is incompatible with transaction mode
+    DATABASE_PGBOUNCER: bool = False
 
     # ── AI / OpenAI ───────────────────────────────────────────────────────────
     OPENAI_API_KEY: str = ""
