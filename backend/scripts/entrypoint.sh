@@ -4,18 +4,20 @@
 set -e
 
 # ── Parse DB host:port from DATABASE_URL ──────────────────────────────────────
-# Handles: postgresql+asyncpg://user:pass@host:5432/dbname
+# Uses urlparse so passwords containing '@' are handled correctly.
 DB_HOST=$(python3 -c "
-import re, os
-url = os.environ.get('DATABASE_URL', '')
-m = re.search(r'@([^:/]+)[:/]', url)
-print(m.group(1) if m else 'db')
+from urllib.parse import urlparse
+import os
+url = os.environ.get('DATABASE_URL', '').replace('+asyncpg', '')
+parsed = urlparse(url)
+print(parsed.hostname or 'db')
 ")
 DB_PORT=$(python3 -c "
-import re, os
-url = os.environ.get('DATABASE_URL', '')
-m = re.search(r':(\d+)/', url)
-print(m.group(1) if m else '5432')
+from urllib.parse import urlparse
+import os
+url = os.environ.get('DATABASE_URL', '').replace('+asyncpg', '')
+parsed = urlparse(url)
+print(parsed.port or 5432)
 ")
 
 echo "⏳  Waiting for Postgres at $DB_HOST:$DB_PORT ..."
