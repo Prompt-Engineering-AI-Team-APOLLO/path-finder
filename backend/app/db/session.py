@@ -6,11 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import settings
 
-_connect_args: dict = {}
+_connect_args: dict = {"statement_cache_size": 0}
 if settings.DATABASE_SSL:
     _connect_args["ssl"] = "require"
-if settings.DATABASE_PGBOUNCER:
-    _connect_args["statement_cache_size"] = 0
 
 engine = create_async_engine(
     str(settings.DATABASE_URL),
