@@ -45,10 +45,19 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations() -> None:
+    connect_args: dict = {}
+    if settings.DATABASE_SSL:
+        connect_args["ssl"] = "require"
+    if settings.DATABASE_PGBOUNCER:
+        # Prevent named prepared statements from persisting on pgBouncer backends
+        # after migrations finish (same fix as session.py — see that file for details).
+        connect_args["prepared_statement_cache_size"] = 0
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
