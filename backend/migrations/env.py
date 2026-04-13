@@ -11,20 +11,26 @@ from app.core.config import settings
 from app.db.base import Base
 
 config = context.config
-# configparser (used internally by Alembic) treats '%' as an interpolation
-# character. Escape it to '%%' so URL-encoded passwords (e.g. %40) survive.
-config.set_main_option("sqlalchemy.url", str(settings.DATABASE_URL).replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
+# Build URL and connect_args once — never passed through configparser so
+# URL-encoded characters (e.g. %40 in passwords) are safe.
+_DB_URL = str(settings.DATABASE_URL)
+
+_connect_args: dict = {}
+if settings.DATABASE_SSL:
+    _connect_args["ssl"] = "require"
+if settings.DATABASE_PGBOUNCER:
+    _connect_args["statement_cache_size"] = 0
+
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=_DB_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -46,9 +52,9 @@ def do_run_migrations(connection):
 
 async def run_async_migrations() -> None:
     connectable = create_async_engine(
-        str(settings.DATABASE_URL),
+        _DB_URL,
         poolclass=pool.NullPool,
-        connect_args={"statement_cache_size": 0},
+        connect_args=_connect_args,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
