@@ -65,4 +65,6 @@ USER appuser
 
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# PORT is injected by Railway at runtime; defaults to 8000 for other environments.
+# WEB_CONCURRENCY can be tuned via env var (default 2).
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-2}"]
