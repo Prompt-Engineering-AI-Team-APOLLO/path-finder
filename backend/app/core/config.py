@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, PostgresDsn, field_validator
+from pydantic import PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,14 +32,9 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ── CORS ──────────────────────────────────────────────────────────────────
-    CORS_ORIGINS: list[AnyHttpUrl | str] = ["http://localhost:3000", "http://localhost:5173"]
-
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors(cls, v: str | list) -> list:
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    # Stored as a plain string so pydantic-settings never tries to JSON-decode it.
+    # Use comma-separated values: "https://app.com,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
 
     # ── Database ──────────────────────────────────────────────────────────────
     DATABASE_URL: PostgresDsn = (  # type: ignore[assignment]
@@ -77,7 +72,7 @@ class Settings(BaseSettings):
     LOG_FORMAT: Literal["json", "text"] = "json"
 
     # ── Google OAuth ──────────────────────────────────────────────────────────
-    GOOGLE_CLIENT_ID: str = "917176408605-f398ke6be8jpuurdlgt1g48cna0rt5n8.apps.googleusercontent.com"
+    GOOGLE_CLIENT_ID: str = ""
 
     # ── Email ─────────────────────────────────────────────────────────────────
     SMTP_HOST: str = ""
@@ -85,6 +80,25 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     EMAILS_FROM: str = "noreply@pathfinder.ai"
+
+    @model_validator(mode="after")
+    def _validate_production_secrets(self) -> "Settings":
+        """Fail fast on startup if required secrets are missing in production."""
+        if self.ENVIRONMENT != "production":
+            return self
+        _default_key = "change-me-in-production-use-openssl-rand-hex-32"
+        if not self.SECRET_KEY or self.SECRET_KEY == _default_key:
+            raise ValueError(
+                "SECRET_KEY must be set to a strong random value in production. "
+                "Generate one with: openssl rand -hex 32"
+            )
+        if not self.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY must be set in production")
+        if not self.DATABASE_URL or "localhost" in str(self.DATABASE_URL):
+            raise ValueError(
+                "DATABASE_URL must point to a remote database in production, not localhost"
+            )
+        return self
 
     @property
     def is_production(self) -> bool:
