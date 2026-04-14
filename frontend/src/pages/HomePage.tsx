@@ -61,6 +61,82 @@ const WELCOME_MESSAGE: Message = {
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
 };
 
+/* ── Flight detail modal ── */
+function FlightDetailModal({ flight, onClose }: { flight: FlightOffer; onClose: () => void }) {
+  const dep = new Date(flight.departure_at);
+  const dateStr = dep.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: '#111321', border: '1px solid var(--color-border-medium)', borderRadius: 'var(--radius-2xl)', width: '100%', maxWidth: 480, boxShadow: '0 32px 80px rgba(0,0,0,0.6)', overflow: 'hidden' }}
+      >
+        {/* Header */}
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)', marginBottom: 4 }}>Flight Details</p>
+            <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)' }}>{flight.airline} · {flight.flight_number}</p>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'var(--color-bg-glass)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+
+        {/* Route block */}
+        <div style={{ padding: '24px 24px 0' }}>
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', marginBottom: 16 }}>{dateStr}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ textAlign: 'left' }}>
+              <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-extrabold)', lineHeight: 1 }}>{formatTime(flight.departure_at)}</p>
+              <p style={{ color: 'var(--color-text-secondary)', fontWeight: 'var(--weight-semibold)', marginTop: 4 }}>{flight.origin}</p>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', marginTop: 2 }}>{flight.origin_city}</p>
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>{formatDuration(flight.duration_minutes)}</p>
+              <div style={{ width: '100%', height: 1, background: 'var(--color-border-medium)', position: 'relative' }}>
+                <svg style={{ position: 'absolute', right: -6, top: -7 }} width="14" height="14" viewBox="0 0 24 24" fill="var(--color-primary)">
+                  <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                </svg>
+              </div>
+              <p style={{ color: flight.stops === 0 ? 'var(--color-green)' : 'var(--color-amber)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)' }}>
+                {flight.stops === 0 ? 'Nonstop' : `${flight.stops} stop${flight.stops > 1 ? 's' : ''}`}
+              </p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-extrabold)', lineHeight: 1 }}>{formatTime(flight.arrival_at)}</p>
+              <p style={{ color: 'var(--color-text-secondary)', fontWeight: 'var(--weight-semibold)', marginTop: 4 }}>{flight.destination}</p>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', marginTop: 2 }}>{flight.destination_city}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Details grid */}
+        <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+          {[
+            { label: 'Cabin Class', value: flight.cabin_class.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) },
+            { label: 'Baggage', value: flight.baggage_included ? 'Included' : 'Not included' },
+            { label: 'Price per person', value: `${flight.currency === 'USD' ? '$' : flight.currency}${flight.price_per_person.toLocaleString()}` },
+            { label: 'Total price', value: `${flight.currency === 'USD' ? '$' : flight.currency}${flight.total_price.toLocaleString()}` },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ background: 'var(--color-bg-glass)', borderRadius: 'var(--radius-lg)', padding: '12px 14px', border: '1px solid var(--color-border)' }}>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>{label}</p>
+              <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '0 24px 24px', display: 'flex', gap: 10 }}>
+          <button type="button" onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)' }}>Close</button>
+          <button type="button" style={{ flex: 1, padding: '10px', borderRadius: 'var(--radius-lg)', border: 'none', background: 'var(--gradient-primary)', color: 'white', cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>Select Flight</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Sparkle icon for CompanionPanel header ── */
 function SparkleIcon() {
   return (
@@ -186,9 +262,13 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  // rawFlightResults = full API results; flightResults = currently displayed (may be filtered)
+  const [rawFlightResults, setRawFlightResults] = useState<FlightOffer[] | null>(null);
   const [flightResults, setFlightResults] = useState<FlightOffer[] | null>(null);
+  const [showFlightResults, setShowFlightResults] = useState(false);
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
   const [flightRoute, setFlightRoute] = useState<{ from: string; to: string } | null>(null);
+  const [detailFlight, setDetailFlight] = useState<FlightOffer | null>(null);
   const conversationId = useRef<string>(crypto.randomUUID());
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -196,6 +276,18 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
     'Content-Type': 'application/json',
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   });
+
+  // Build system prompt, injecting actual loaded flights so AI never hallucinates
+  const buildSystemPrompt = (flights: FlightOffer[] | null, route: { from: string; to: string } | null) => {
+    let prompt = SYSTEM_PROMPT;
+    if (flights && flights.length > 0 && route) {
+      const list = flights.map(f =>
+        `• ${f.airline} ${f.flight_number} | Departs ${formatTime(f.departure_at)} | Arrives ${formatTime(f.arrival_at)} | ${formatDuration(f.duration_minutes)} | ${f.stops === 0 ? 'Nonstop' : f.stops + ' stop(s)'} | $${f.price_per_person} ${f.currency}/person`
+      ).join('\n');
+      prompt += `\n\nFLIGHTS CURRENTLY SHOWN TO USER (${flights.length} flights, ${route.from} → ${route.to}):\n${list}\n\nIMPORTANT: Only reference these exact flights. Never invent airline names, times, prices, or flight numbers.`;
+    }
+    return prompt;
+  };
 
   const callChatAPI = async (
     msgs: { role: string; content: string }[],
@@ -217,7 +309,6 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
     return data.content as string;
   };
 
-  // Parallel extraction call: zero-temperature, focused on returning structured JSON only.
   const extractFlightParams = async (
     history: { role: string; content: string }[],
   ) => {
@@ -225,16 +316,33 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
       .toISOString()
       .split('T')[0];
 
-    const extractPrompt = `You are a flight parameter extractor. Analyse the conversation and return ONLY a JSON object — no other text.
+    const extractPrompt = `You are a flight parameter extractor. Read the ENTIRE conversation and return ONLY a JSON object — no other text.
 
-Return {"should_search":false} if origin OR destination is unknown.
-Return {"should_search":true,"origin":"ATL","destination":"EWR","departure_date":"YYYY-MM-DD","passengers":1,"cabin_class":"economy"} when both airports are known.
+STEP 1 — Decide should_search:
+- true  → user wants a NEW flight search and both origin AND destination are known from any message
+- false → user is filtering/refining existing results, or origin/destination unknown
 
-Rules:
-- Use IATA codes. Common ones: New York=JFK, Newark/NJ=EWR, Atlanta=ATL, LA=LAX, Chicago=ORD, Miami=MIA, SF=SFO, Boston=BOS, Dallas=DFW, Seattle=SEA, Denver=DEN, DC=DCA, Orlando=MCO, Houston=IAH, Vegas=LAS, Philly=PHL, Charlotte=CLT, Phoenix=PHX
-- If date is vague or missing, use ${defaultDate}.
-- Passengers default to 1, cabin to economy.
-- Return ONLY the JSON.`;
+STEP 2 — Extract filters (include any that apply, omit others):
+- max_price: number (USD) — e.g. "under $300", "cheaper than $200"
+- depart_before: "HH:MM" (24h) — e.g. "before 10am" → "10:00", "early morning" → "09:00"
+- depart_after: "HH:MM" (24h) — e.g. "after 6pm" → "18:00"
+- max_stops: number — e.g. "nonstop" → 0, "one stop or less" → 1
+- airlines: ["Airline Name"] — e.g. "only Delta" → ["Delta"]
+
+OUTPUT when should_search true:
+{"should_search":true,"origin":"ATL","destination":"LAX","departure_date":"YYYY-MM-DD","passengers":1,"cabin_class":"economy"}
+(add any filter fields if also mentioned)
+
+OUTPUT when should_search false (filtering only):
+{"should_search":false}
+(add any filter fields that apply)
+
+IATA codes: New York=JFK, Newark=EWR, Atlanta=ATL, Los Angeles=LAX, Chicago=ORD, Miami=MIA, San Francisco=SFO, Boston=BOS, Dallas=DFW, Seattle=SEA, Denver=DEN, Washington DC=DCA, Orlando=MCO, Houston=IAH, Las Vegas=LAS, Philadelphia=PHL, Charlotte=CLT, Phoenix=PHX, Minneapolis=MSP, Detroit=DTW, Portland=PDX
+
+Other rules:
+- Missing date → use ${defaultDate}
+- Passengers default 1, cabin default economy
+- Return ONLY valid JSON`;
 
     try {
       const res = await fetch(`${API_BASE}/ai/chat`, {
@@ -244,11 +352,11 @@ Rules:
           messages: [
             { role: 'system', content: extractPrompt },
             ...history,
-            { role: 'user', content: 'Extract flight parameters. JSON only.' },
+            { role: 'user', content: 'Extract parameters now. JSON only.' },
           ],
           stream: false,
           temperature: 0,
-          max_tokens: 150,
+          max_tokens: 200,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -259,6 +367,45 @@ Rules:
       return null;
     }
   };
+
+  // Apply all filter params to a flight list
+  const applyFilters = (flights: FlightOffer[], params: Record<string, unknown>): FlightOffer[] => {
+    let result = [...flights];
+    if (typeof params.max_price === 'number') {
+      result = result.filter(f => f.price_per_person <= (params.max_price as number));
+    }
+    if (typeof params.depart_before === 'string') {
+      const [h, m] = (params.depart_before as string).split(':').map(Number);
+      const limit = h * 60 + (m || 0);
+      result = result.filter(f => {
+        const d = new Date(f.departure_at);
+        return d.getHours() * 60 + d.getMinutes() < limit;
+      });
+    }
+    if (typeof params.depart_after === 'string') {
+      const [h, m] = (params.depart_after as string).split(':').map(Number);
+      const limit = h * 60 + (m || 0);
+      result = result.filter(f => {
+        const d = new Date(f.departure_at);
+        return d.getHours() * 60 + d.getMinutes() >= limit;
+      });
+    }
+    if (typeof params.max_stops === 'number') {
+      result = result.filter(f => f.stops <= (params.max_stops as number));
+    }
+    if (Array.isArray(params.airlines) && (params.airlines as string[]).length > 0) {
+      const names = (params.airlines as string[]).map(a => a.toLowerCase());
+      result = result.filter(f => names.some(n => f.airline.toLowerCase().includes(n)));
+    }
+    return result;
+  };
+
+  const hasFilterParams = (params: Record<string, unknown>) =>
+    params.max_price !== undefined ||
+    params.depart_before !== undefined ||
+    params.depart_after !== undefined ||
+    params.max_stops !== undefined ||
+    (Array.isArray(params.airlines) && (params.airlines as string[]).length > 0);
 
   const handleSend = async (text: string) => {
     const userMsg: Message = { id: String(Date.now()), role: 'user', content: text, timestamp: now() };
@@ -271,16 +418,18 @@ Rules:
         .map(m => ({ role: m.role, content: m.content }));
       history.push({ role: 'user', content: text });
 
-      // Chat reply + flight param extraction run in parallel
-      const [rawReply, params] = await Promise.all([
-        callChatAPI([{ role: 'system', content: SYSTEM_PROMPT }, ...history]),
-        extractFlightParams(history),
-      ]);
-
-      const cleanReply = rawReply.trim() || 'Let me find the best flights for you.';
+      // Use system prompt that includes currently loaded flights so AI stays grounded
+      const systemPrompt = buildSystemPrompt(rawFlightResults, flightRoute);
+      const rawReply = await callChatAPI([{ role: 'system', content: systemPrompt }, ...history]);
+      const cleanReply = rawReply.trim() || 'Let me find the best options for you.';
       setMessages(prev => [...prev, { id: String(Date.now()), role: 'assistant', content: cleanReply, timestamp: now() }]);
 
+      // Extractor sees full history including AI reply
+      const historyWithReply = [...history, { role: 'assistant', content: cleanReply }];
+      const params = await extractFlightParams(historyWithReply);
+
       if (params?.should_search) {
+        // New search
         const flightRes = await fetch(`${API_BASE}/flights/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -293,26 +442,21 @@ Rules:
           }),
         });
         const flightData = await flightRes.json().catch(() => null);
-        const flights: FlightOffer[] = flightData?.outbound_flights ?? [];
+        const allFlights: FlightOffer[] = flightData?.outbound_flights ?? [];
 
-        if (flightRes.ok && flights.length > 0) {
-          setFlightResults(flights);
+        if (flightRes.ok && allFlights.length > 0) {
+          const displayed = hasFilterParams(params) ? applyFilters(allFlights, params) : allFlights;
+          setRawFlightResults(allFlights);
+          setFlightResults(displayed.length > 0 ? displayed : allFlights);
+          setShowFlightResults(true);
           setSelectedFlightId(null);
           setFlightRoute({ from: params.origin, to: params.destination });
-          setMessages(prev => [...prev, {
-            id: String(Date.now()),
-            role: 'assistant',
-            content: `I found ${flights.length} flights from ${flightData.origin} to ${flightData.destination} on ${params.departure_date}. Check the panel on the right to compare and select your flight.`,
-            timestamp: now(),
-          }]);
-        } else {
-          setMessages(prev => [...prev, {
-            id: String(Date.now()),
-            role: 'assistant',
-            content: `No flights found from ${params.origin} to ${params.destination} on ${params.departure_date}. Try different dates or a nearby airport?`,
-            timestamp: now(),
-          }]);
         }
+      } else if (params && hasFilterParams(params) && rawFlightResults) {
+        // Filter existing results (always against the raw set so filters don't compound destructively)
+        const filtered = applyFilters(rawFlightResults, params);
+        setFlightResults(filtered.length > 0 ? filtered : rawFlightResults);
+        setShowFlightResults(true);
       }
     } catch {
       setMessages(prev => [...prev, {
@@ -329,7 +473,8 @@ Rules:
   return (
     <div
       style={{
-        minHeight: '100svh',
+        height: '100svh',
+        overflow: 'hidden',
         background: '#0A0A0F',
         fontFamily: 'var(--font-sans)',
         display: 'flex',
@@ -484,6 +629,7 @@ Rules:
           gap: 0,
           padding: '24px 32px',
           minHeight: 0,
+          overflow: 'hidden',
         }}
       >
         {/* LEFT: AI Companion */}
@@ -517,8 +663,45 @@ Rules:
         </div>
 
         {/* RIGHT: flight results or default content */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0, overflowY: 'auto' }}>
-          {flightResults ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0, minHeight: 0, overflowY: 'auto' }}>
+          {/* Restore banner — sticky, shown whenever flight results are hidden */}
+          {flightResults && !showFlightResults && (
+            <button
+              type="button"
+              onClick={() => setShowFlightResults(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '12px 18px',
+                background: 'linear-gradient(90deg, rgba(112,71,235,0.25) 0%, rgba(112,71,235,0.1) 100%)',
+                border: '1px solid rgba(112,71,235,0.5)',
+                borderRadius: 'var(--radius-xl)',
+                color: 'var(--color-text-primary)',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-sans)',
+                flexShrink: 0,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--color-primary)">
+                  <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                </svg>
+                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+                  View flights · {flightRoute?.from} → {flightRoute?.to}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ background: 'var(--color-primary)', color: 'white', borderRadius: 'var(--radius-full)', padding: '2px 10px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)' }}>
+                  {flightResults.length} flights
+                </span>
+                <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>Show →</span>
+              </div>
+            </button>
+          )}
+
+          {showFlightResults && flightResults ? (
             /* ── Flight results panel ── */
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* Header */}
@@ -533,7 +716,7 @@ Rules:
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setFlightResults(null); setSelectedFlightId(null); setFlightRoute(null); }}
+                  onClick={() => setShowFlightResults(false)}
                   style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-full)', padding: '6px 14px', cursor: 'pointer', fontFamily: 'var(--font-sans)' }}
                 >
                   ← Back
@@ -543,23 +726,31 @@ Rules:
               {/* Flight cards */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {flightResults.map((flight, i) => (
-                  <FlightCard
-                    key={flight.offer_id}
-                    airline={flight.airline}
-                    flightNumber={flight.flight_number}
-                    cabinClass={flight.cabin_class}
-                    departureTime={formatTime(flight.departure_at)}
-                    departureCode={flight.origin}
-                    arrivalTime={formatTime(flight.arrival_at)}
-                    arrivalCode={flight.destination}
-                    duration={formatDuration(flight.duration_minutes)}
-                    stops={flight.stops}
-                    price={flight.price_per_person}
-                    currency={flight.currency}
-                    recommended={i === 0}
-                    selected={selectedFlightId === flight.offer_id}
-                    onSelect={() => setSelectedFlightId(flight.offer_id)}
-                  />
+                  <div key={flight.offer_id}>
+                    <FlightCard
+                      airline={flight.airline}
+                      flightNumber={flight.flight_number}
+                      cabinClass={flight.cabin_class}
+                      departureTime={formatTime(flight.departure_at)}
+                      departureCode={flight.origin}
+                      arrivalTime={formatTime(flight.arrival_at)}
+                      arrivalCode={flight.destination}
+                      duration={formatDuration(flight.duration_minutes)}
+                      stops={flight.stops}
+                      price={flight.price_per_person}
+                      currency={flight.currency}
+                      recommended={i === 0}
+                      selected={selectedFlightId === flight.offer_id}
+                      onSelect={() => setSelectedFlightId(flight.offer_id)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDetailFlight(flight)}
+                      style={{ width: '100%', marginTop: 6, padding: '6px', background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', cursor: 'pointer', fontFamily: 'var(--font-sans)', letterSpacing: 'var(--tracking-wide)' }}
+                    >
+                      View Details ›
+                    </button>
+                  </div>
                 ))}
               </div>
 
@@ -628,6 +819,8 @@ Rules:
           )}
         </div>
       </div>
+
+      {detailFlight && <FlightDetailModal flight={detailFlight} onClose={() => setDetailFlight(null)} />}
     </div>
   );
 }
