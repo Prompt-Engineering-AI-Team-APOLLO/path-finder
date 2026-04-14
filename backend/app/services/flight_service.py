@@ -133,8 +133,8 @@ class FlightService:
             outbound_destination=out["destination"],
             outbound_origin_city=out["origin_city"],
             outbound_destination_city=out["destination_city"],
-            outbound_departure_at=out["departure_at"],
-            outbound_arrival_at=out["arrival_at"],
+            outbound_departure_at=datetime.fromisoformat(out["departure_at"]),
+            outbound_arrival_at=datetime.fromisoformat(out["arrival_at"]),
             outbound_duration_minutes=out["duration_minutes"],
             outbound_stops=out["stops"],
             # Return
@@ -145,8 +145,8 @@ class FlightService:
             return_destination=ret["destination"] if ret else None,
             return_origin_city=ret["origin_city"] if ret else None,
             return_destination_city=ret["destination_city"] if ret else None,
-            return_departure_at=ret["departure_at"] if ret else None,
-            return_arrival_at=ret["arrival_at"] if ret else None,
+            return_departure_at=datetime.fromisoformat(ret["departure_at"]) if ret else None,
+            return_arrival_at=datetime.fromisoformat(ret["arrival_at"]) if ret else None,
             return_duration_minutes=ret["duration_minutes"] if ret else None,
             return_stops=ret["stops"] if ret else None,
             # Details
@@ -172,9 +172,11 @@ class FlightService:
             )
         return booking
 
-    async def list_my_bookings(self, user_id: uuid.UUID) -> list[FlightBooking]:
-        """Return all bookings belonging to the authenticated user."""
-        return await self._repo.get_by_user_id(user_id)
+    async def list_my_bookings(self, user_id: uuid.UUID | None = None) -> list[FlightBooking]:
+        """Return bookings for a user, or all bookings when no user_id is given."""
+        if user_id is not None:
+            return await self._repo.get_by_user_id(user_id)
+        return await self._repo.get_all()
 
     # ── Modify ────────────────────────────────────────────────────────────────
 
@@ -182,7 +184,7 @@ class FlightService:
         self,
         reference: str,
         req: BookingModifyRequest,
-        user_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
     ) -> FlightBooking:
         """Modify dates, cabin class, and/or contact details on an active booking."""
         booking = await self._require_owned_active_booking(reference, user_id)
@@ -298,7 +300,7 @@ class FlightService:
     # ── Cancel ────────────────────────────────────────────────────────────────
 
     async def cancel_booking(
-        self, reference: str, user_id: uuid.UUID
+        self, reference: str, user_id: uuid.UUID | None = None
     ) -> BookingCancelResponse:
         """Cancel an active booking owned by the requesting user."""
         booking = await self._require_owned_active_booking(reference, user_id)
@@ -357,10 +359,10 @@ class FlightService:
         )
 
     async def _require_owned_active_booking(
-        self, reference: str, user_id: uuid.UUID
+        self, reference: str, user_id: uuid.UUID | None = None
     ) -> FlightBooking:
         booking = await self.get_booking(reference)
-        if booking.user_id != user_id:
+        if user_id is not None and booking.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to modify this booking",

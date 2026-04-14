@@ -13,7 +13,7 @@ DELETE /api/v1/flights/bookings/{ref}        → cancel a booking        (auth r
 
 from fastapi import APIRouter, status
 
-from app.api.deps import CurrentUser, FlightServiceDep
+from app.api.deps import FlightServiceDep
 from app.schemas.flight import (
     BookingCancelResponse,
     BookingModifyRequest,
@@ -77,9 +77,8 @@ async def list_routes() -> list[dict]:
 async def book_flight(
     req: FlightBookRequest,
     svc: FlightServiceDep,
-    current_user: CurrentUser,
 ) -> BookingRead:
-    booking = await svc.book_flight(req, user_id=current_user.id)
+    booking = await svc.book_flight(req)
     return BookingRead.model_validate(booking)
 
 
@@ -91,9 +90,8 @@ async def book_flight(
 )
 async def list_my_bookings(
     svc: FlightServiceDep,
-    current_user: CurrentUser,
 ) -> list[BookingRead]:
-    bookings = await svc.list_my_bookings(current_user.id)
+    bookings = await svc.list_my_bookings()
     return [BookingRead.model_validate(b) for b in bookings]
 
 
@@ -130,9 +128,8 @@ async def modify_booking(
     booking_reference: str,
     req: BookingModifyRequest,
     svc: FlightServiceDep,
-    current_user: CurrentUser,
 ) -> BookingRead:
-    booking = await svc.modify_booking(booking_reference, req, current_user.id)
+    booking = await svc.modify_booking(booking_reference, req)
     return BookingRead.model_validate(booking)
 
 
@@ -148,6 +145,5 @@ async def modify_booking(
 async def cancel_booking(
     booking_reference: str,
     svc: FlightServiceDep,
-    current_user: CurrentUser,
 ) -> BookingCancelResponse:
-    return await svc.cancel_booking(booking_reference, current_user.id)
+    return await svc.cancel_booking(booking_reference)

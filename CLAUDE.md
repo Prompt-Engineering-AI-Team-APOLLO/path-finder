@@ -1,16 +1,95 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Pathfinder — CLAUDE.md
-
-Project-level guidance for Claude Code in this repository.
-
----
-
-## Project Overview
 
 **Pathfinder** is a monorepo with:
 - `backend/` — FastAPI 0.115 + Python 3.12, async-first
-- `frontend/` — Frontend application
+- `frontend/` — React 19 + Vite + TypeScript + Tailwind CSS 4
 
-Backend stack: FastAPI · PostgreSQL 16 · SQLAlchemy 2.0 (async) · Alembic · Redis · Pinecone · structlog · pytest
+Backend stack: FastAPI · PostgreSQL 16 · SQLAlchemy 2.0 (async) · Alembic · Redis · OpenAI · Pinecone · structlog · pytest
+
+---
+
+## Running the Backend
+
+```bash
+cd backend
+docker compose up -d          # start Postgres + Redis
+source ../venv/bin/activate
+make dev                      # hot-reload dev server at http://localhost:8001
+```
+
+Swagger docs at `http://localhost:8001/docs` (disabled in production).
+
+**Key make targets** (run from `backend/`):
+
+| Command | Description |
+|---|---|
+| `make dev` | Start uvicorn with hot-reload on port 8001 |
+| `make test` | Run full test suite |
+| `make test-cov` | Tests + HTML coverage report (`htmlcov/index.html`) |
+| `make lint` | flake8 + mypy |
+| `make format` | black + isort |
+| `make migrate` | Run pending Alembic migrations |
+| `make migrate-new msg="..."` | Autogenerate a new migration |
+| `make migrate-down` | Roll back one migration |
+
+## Running Tests
+
+```bash
+cd backend
+pytest                                    # all tests
+pytest tests/services/                   # service layer only
+pytest tests/api/                        # API layer only
+pytest -x -q                             # stop on first failure, minimal output
+pytest tests/api/test_flights.py -k "search"  # single test by keyword
+```
+
+Tests use SQLite in-memory (no Docker needed). Available fixtures in `conftest.py`: `client` (AsyncClient with DB override), `db_session`, `user_payload`.
+
+## Running the Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev      # Vite dev server
+npm run build    # TypeScript check + Vite build
+npm run lint     # ESLint
+```
+
+---
+
+## Architecture
+
+### Backend layers (request path)
+
+```
+HTTP request
+  → Middleware (ErrorHandlerMiddleware, RequestLoggerMiddleware, CORSMiddleware)
+  → Router  app/api/v1/router.py
+  → Endpoint  app/api/v1/endpoints/<name>.py
+  → Service  app/services/<name>_service.py
+  → Repository  app/repositories/<name>_repository.py
+  → SQLAlchemy model  app/models/<name>.py
+```
+
+- **`app/api/deps.py`** — all dependency injection lives here. `CurrentUser`, `AdminUser`, and `*ServiceDep` type aliases are imported directly by endpoints.
+- **`app/core/config.py`** — all settings via `settings` singleton; never read `os.environ` directly.
+- **`app/db/base.py`** — `BaseModel` (UUID PK + timestamps) and `BaseRepository[T]` (generic CRUD: `get_by_id`, `get_all`, `count`, `create`, `update`, `delete`).
+
+### AI & Vector services
+
+- **`AIService`** (`app/services/ai_service.py`) — thin async wrapper over `AsyncOpenAI`. Provides `chat()`, `chat_stream()`, and `embed()`. Configured via `settings.OPENAI_MODEL / OPENAI_TEMPERATURE / OPENAI_MAX_TOKENS`.
+- **`VectorService`** (`app/services/vector_service.py`) — Pinecone-backed vector store wrapping `AIService.embed()`. Gracefully degrades to no-op when `PINECONE_API_KEY` is unset. Supports `upsert`, `search`, `delete`.
+- **`FlightService`** / **`flight_mock_provider`** — flights use deterministic mock data; same search query always returns the same offers. No external API call.
+
+### Frontend
+
+The frontend uses **manual state-based navigation** (no React Router). `App.tsx` holds `page` state (`'login' | 'home' | 'plan' | 'confirm'`) and renders the matching page component. There's a dev-only page-switcher nav bar rendered in production builds as well — remove before shipping.
+
+Auth state is stored in `localStorage` or `sessionStorage` under key `pathfinder_auth_session` depending on the "remember me" checkbox.
 
 ---
 
@@ -29,13 +108,9 @@ class MyModel(BaseModel):
     __tablename__ = "my_models"
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    # Add columns here
 ```
 
-- All models inherit `BaseModel` (UUID PK + timestamps auto-managed).
-- Export the model from `backend/app/models/__init__.py` so Alembic picks it up.
-
----
+Export the model from `backend/app/models/__init__.py` so Alembic picks it up.
 
 ### Step 2 — Pydantic Schemas (`backend/app/schemas/<name>.py`)
 
@@ -48,7 +123,7 @@ class MyModelBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
 class MyModelCreate(MyModelBase):
-    pass  # add creation-only fields
+    pass
 
 class MyModelUpdate(BaseModel):
     name: str | None = None  # all fields optional for PATCH
@@ -57,16 +132,8 @@ class MyModelRead(MyModelBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
-    model_config = {"from_attributes": True}  # enables ORM → Pydantic conversion
+    model_config = {"from_attributes": True}
 ```
-
-Naming conventions:
-- `*Create` — POST request body
-- `*Update` — PATCH request body (all fields optional)
-- `*Read` — response body (includes `id`, timestamps)
-- `*ReadPublic` — subset safe to expose publicly (omit if not needed)
-
----
 
 ### Step 3 — Repository (`backend/app/repositories/<name>_repository.py`)
 
@@ -75,20 +142,9 @@ from app.db.base import BaseRepository
 from app.models.my_model import MyModel
 
 class MyModelRepository(BaseRepository[MyModel]):
-    # BaseRepository already provides:
-    #   get_by_id(), get_all(), count(), create(), update(), delete()
-
-    async def get_by_name(self, name: str) -> MyModel | None:
-        from sqlalchemy import select
-        result = await self._session.execute(
-            select(MyModel).where(MyModel.name == name)
-        )
-        return result.scalar_one_or_none()
+    # BaseRepository provides: get_by_id(), get_all(), count(), create(), update(), delete()
+    pass
 ```
-
-Only add methods that go beyond the generic CRUD provided by `BaseRepository`.
-
----
 
 ### Step 4 — Service (`backend/app/services/<name>_service.py`)
 
@@ -108,8 +164,7 @@ class MyModelService:
         self._repo = MyModelRepository(session)
 
     async def create(self, data: MyModelCreate) -> MyModel:
-        obj = MyModel(**data.model_dump())
-        return await self._repo.create(obj)
+        return await self._repo.create(MyModel(**data.model_dump()))
 
     async def get(self, obj_id: uuid.UUID) -> MyModel:
         obj = await self._repo.get_by_id(obj_id)
@@ -124,21 +179,10 @@ class MyModelService:
         return await self._repo.update(obj)
 
     async def delete(self, obj_id: uuid.UUID) -> None:
-        obj = await self.get(obj_id)
-        await self._repo.delete(obj)
+        await self._repo.delete(await self.get(obj_id))
 ```
 
-Rules:
-- Constructor takes `AsyncSession`, creates `self._repo`.
-- All methods are `async`.
-- Raise `HTTPException` for user-visible errors (with `status_code` + `detail`).
-- Use `model_dump(exclude_unset=True)` for PATCH to avoid overwriting with `None`.
-
----
-
 ### Step 5 — Dependency Injection (`backend/app/api/deps.py`)
-
-Add at the bottom of `deps.py`:
 
 ```python
 from app.services.my_model_service import MyModelService
@@ -149,13 +193,10 @@ def get_my_model_service(db: DBDep) -> MyModelService:
 MyModelServiceDep = Annotated[MyModelService, Depends(get_my_model_service)]
 ```
 
----
-
 ### Step 6 — API Endpoint (`backend/app/api/v1/endpoints/<name>.py`)
 
 ```python
 import uuid
-from typing import Annotated
 from fastapi import APIRouter, status
 from app.api.deps import MyModelServiceDep, CurrentUser
 from app.schemas.my_model import MyModelCreate, MyModelUpdate, MyModelRead
@@ -163,71 +204,42 @@ from app.schemas.my_model import MyModelCreate, MyModelUpdate, MyModelRead
 router = APIRouter(prefix="/my-models", tags=["my-models"])
 
 @router.post("", response_model=MyModelRead, status_code=status.HTTP_201_CREATED)
-async def create_my_model(
-    data: MyModelCreate,
-    svc: MyModelServiceDep,
-    _: CurrentUser,  # require authentication; remove if public
-) -> MyModelRead:
-    """Create a new MyModel."""
-    obj = await svc.create(data)
-    return MyModelRead.model_validate(obj)
+async def create_my_model(data: MyModelCreate, svc: MyModelServiceDep, _: CurrentUser) -> MyModelRead:
+    return MyModelRead.model_validate(await svc.create(data))
 
 @router.get("/{obj_id}", response_model=MyModelRead)
-async def get_my_model(
-    obj_id: uuid.UUID,
-    svc: MyModelServiceDep,
-    _: CurrentUser,
-) -> MyModelRead:
-    """Fetch a single MyModel by ID."""
-    obj = await svc.get(obj_id)
-    return MyModelRead.model_validate(obj)
+async def get_my_model(obj_id: uuid.UUID, svc: MyModelServiceDep, _: CurrentUser) -> MyModelRead:
+    return MyModelRead.model_validate(await svc.get(obj_id))
 
 @router.patch("/{obj_id}", response_model=MyModelRead)
-async def update_my_model(
-    obj_id: uuid.UUID,
-    data: MyModelUpdate,
-    svc: MyModelServiceDep,
-    _: CurrentUser,
-) -> MyModelRead:
-    """Partially update a MyModel."""
-    obj = await svc.update(obj_id, data)
-    return MyModelRead.model_validate(obj)
+async def update_my_model(obj_id: uuid.UUID, data: MyModelUpdate, svc: MyModelServiceDep, _: CurrentUser) -> MyModelRead:
+    return MyModelRead.model_validate(await svc.update(obj_id, data))
 
 @router.delete("/{obj_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_my_model(
-    obj_id: uuid.UUID,
-    svc: MyModelServiceDep,
-    _: CurrentUser,
-) -> None:
-    """Delete a MyModel."""
+async def delete_my_model(obj_id: uuid.UUID, svc: MyModelServiceDep, _: CurrentUser) -> None:
     await svc.delete(obj_id)
 ```
 
-- Always use `model_validate(orm_obj)` to convert ORM → response schema.
+- Use `model_validate(orm_obj)` to convert ORM → response schema.
 - Authenticated endpoints receive `CurrentUser` (or `AdminUser`) from `deps.py`.
 - Public endpoints omit the `CurrentUser` dependency.
-
----
 
 ### Step 7 — Register the Router (`backend/app/api/v1/router.py`)
 
 ```python
-from app.api.v1.endpoints import my_model  # import the new module
-
+from app.api.v1.endpoints import my_model
 api_router.include_router(my_model.router)
 ```
-
----
 
 ### Step 8 — Alembic Migration
 
 ```bash
 cd backend
-alembic revision --autogenerate -m "add_my_model"
-alembic upgrade head
+make migrate-new msg="add_my_model"   # or: alembic revision --autogenerate -m "..."
+make migrate                           # apply
 ```
 
-Review the generated file in `migrations/versions/` before running — autogenerate sometimes misses FK constraints or index names.
+Review the generated file in `migrations/versions/` — autogenerate sometimes misses FK constraints or index names.
 
 ---
 
@@ -258,29 +270,3 @@ Review the generated file in `migrations/versions/` before running — autogener
 | PATCH semantics | Use `model_dump(exclude_unset=True)` so missing fields are not overwritten |
 | File naming | `snake_case.py` for files, `PascalCase` for classes |
 | Section dividers | `# ── Section Name ──` for readability inside longer files |
-
----
-
-## Running the Backend Locally
-
-```bash
-cd backend
-docker compose up -d          # start Postgres + Redis
-source ../venv/bin/activate
-uvicorn app.main:app --reload  # hot-reload dev server at http://localhost:8000
-```
-
-Docs available at `http://localhost:8000/docs` (Swagger) and `/redoc`.
-
----
-
-## Running Tests
-
-```bash
-cd backend
-pytest                         # all tests
-pytest tests/services/         # service layer only
-pytest -x -q                   # stop on first failure, minimal output
-```
-
-Tests use SQLite in-memory (no Docker needed).
