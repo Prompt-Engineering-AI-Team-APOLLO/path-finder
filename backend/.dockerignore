@@ -18,7 +18,6 @@ htmlcov/
 venv/
 env/
 .pre-commit-config.yaml
-requirements-dev.txt
 
 # Tests (not needed in production image)
 tests/
