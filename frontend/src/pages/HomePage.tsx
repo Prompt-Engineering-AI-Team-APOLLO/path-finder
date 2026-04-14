@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Badge,
   StepIndicator,
@@ -9,27 +9,27 @@ import {
 } from '../components/ui';
 import type { Message } from '../components/ui';
 
-/* ── Static conversation ── */
-const MESSAGES: Message[] = [
-  {
-    id: '1',
-    role: 'assistant',
-    content: "Good morning, Alex. I've noticed you've been looking at Mediterranean escapes. Would you like to see a curated route through the Amalfi Coast or perhaps some secluded villas in Crete?",
-    timestamp: '9:14 AM',
-  },
-  {
-    id: '2',
-    role: 'user',
-    content: "Show me something exclusive in Italy. I'm looking for high-end activities and a premium car rental for the coastal drive.",
-    timestamp: '9:15 AM',
-  },
-  {
-    id: '3',
-    role: 'assistant',
-    content: "Understood. I've updated the itinerary to focus on top-tier Italian experiences — including a private Amalfi villa, Michelin-starred dining in Positano, and a Ferrari Roma for the coastal route.",
-    timestamp: '9:15 AM',
-  },
-];
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+
+const SYSTEM_PROMPT = `You are Pathfinder, a premium AI travel curator. Help users plan trips and book flights.
+
+RESPONSE STYLE:
+- SHORT responses only — max 2 short paragraphs, 2-3 sentences each.
+- Put a blank line between paragraphs.
+- Be friendly and direct. Never write a wall of text.
+
+CONVERSATION FLOW:
+1. When the user mentions a destination but not an origin → ask where they are flying FROM.
+2. When you know origin + destination but no date → ask for a specific travel date (or confirm you will use the soonest available).
+3. Assume 1 passenger and economy unless stated otherwise.
+4. After flight results are shown, briefly highlight the best 1-2 options and ask which they'd like to book.`;
+
+const WELCOME_MESSAGE: Message = {
+  id: 'welcome',
+  role: 'assistant',
+  content: "Hi! I'm your AI travel curator. Tell me where you'd like to go and I'll plan the perfect trip — flights, activities, dining, and more. Where shall we begin?",
+  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+};
 
 /* ── Sparkle icon for CompanionPanel header ── */
 function SparkleIcon() {
@@ -147,21 +147,164 @@ const STEPS = [
 ───────────────────────────────────────────── */
 interface HomePageProps {
   userEmail?: string;
+  accessToken?: string;
   onOpenProfile?: () => void;
   onSignOut?: () => void;
 }
 
-export default function HomePage({ userEmail, onOpenProfile, onSignOut }: HomePageProps) {
-  const [messages, setMessages] = useState<Message[]>(MESSAGES);
+export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut }: HomePageProps) {
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+  const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const conversationId = useRef<string>(crypto.randomUUID());
+  const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const handleSend = (text: string) => {
-    setMessages(prev => [...prev, {
-      id: String(Date.now()),
-      role: 'user',
-      content: text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    }]);
+  const authHeaders = () => ({
+    'Content-Type': 'application/json',
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  });
+
+  const callChatAPI = async (
+    msgs: { role: string; content: string }[],
+    maxTokens = 512,
+  ): Promise<string> => {
+    const res = await fetch(`${API_BASE}/ai/chat`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        messages: msgs,
+        conversation_id: conversationId.current,
+        stream: false,
+        temperature: 0.7,
+        max_tokens: maxTokens,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail ?? 'Request failed');
+    return data.content as string;
+  };
+
+  // Parallel extraction call: zero-temperature, focused on returning structured JSON only.
+  const extractFlightParams = async (
+    history: { role: string; content: string }[],
+  ) => {
+    const defaultDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split('T')[0];
+
+    const extractPrompt = `You are a flight parameter extractor. Analyse the conversation and return ONLY a JSON object — no other text.
+
+Return {"should_search":false} if origin OR destination is unknown.
+Return {"should_search":true,"origin":"ATL","destination":"EWR","departure_date":"YYYY-MM-DD","passengers":1,"cabin_class":"economy"} when both airports are known.
+
+Rules:
+- Use IATA codes. Common ones: New York=JFK, Newark/NJ=EWR, Atlanta=ATL, LA=LAX, Chicago=ORD, Miami=MIA, SF=SFO, Boston=BOS, Dallas=DFW, Seattle=SEA, Denver=DEN, DC=DCA, Orlando=MCO, Houston=IAH, Vegas=LAS, Philly=PHL, Charlotte=CLT, Phoenix=PHX
+- If date is vague or missing, use ${defaultDate}.
+- Passengers default to 1, cabin to economy.
+- Return ONLY the JSON.`;
+
+    try {
+      const res = await fetch(`${API_BASE}/ai/chat`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: extractPrompt },
+            ...history,
+            { role: 'user', content: 'Extract flight parameters. JSON only.' },
+          ],
+          stream: false,
+          temperature: 0,
+          max_tokens: 150,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return null;
+      const jsonStr = (data.content as string)?.match(/\{[\s\S]*\}/)?.[0];
+      return jsonStr ? JSON.parse(jsonStr) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleSend = async (text: string) => {
+    const userMsg: Message = { id: String(Date.now()), role: 'user', content: text, timestamp: now() };
+    setMessages(prev => [...prev, userMsg]);
+    setIsTyping(true);
+
+    try {
+      const history = messages
+        .filter(m => m.id !== 'welcome')
+        .map(m => ({ role: m.role, content: m.content }));
+      history.push({ role: 'user', content: text });
+
+      // Chat reply + flight param extraction run in parallel
+      const [rawReply, params] = await Promise.all([
+        callChatAPI([{ role: 'system', content: SYSTEM_PROMPT }, ...history]),
+        extractFlightParams(history),
+      ]);
+
+      const cleanReply = rawReply.trim() || 'Let me find the best flights for you.';
+      setMessages(prev => [...prev, { id: String(Date.now()), role: 'assistant', content: cleanReply, timestamp: now() }]);
+
+      if (params?.should_search) {
+        const flightRes = await fetch(`${API_BASE}/flights/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origin: params.origin,
+            destination: params.destination,
+            departure_date: params.departure_date,
+            passengers: params.passengers ?? 1,
+            cabin_class: params.cabin_class ?? 'economy',
+          }),
+        });
+        const flightData = await flightRes.json().catch(() => null);
+        const flights: Record<string, unknown>[] = flightData?.outbound_flights ?? [];
+
+        if (flightRes.ok && flights.length > 0) {
+          const top4 = flights.slice(0, 4).map(f => ({
+            flight_number: f.flight_number,
+            airline: f.airline,
+            departure: f.departure_at,
+            arrival: f.arrival_at,
+            duration_minutes: f.duration_minutes,
+            stops: f.stops,
+            cabin: f.cabin_class,
+            price: `${f.currency} ${f.total_price}`,
+            baggage_included: f.baggage_included,
+          }));
+
+          const presentReply = await callChatAPI([
+            { role: 'system', content: SYSTEM_PROMPT },
+            ...history,
+            { role: 'assistant', content: cleanReply },
+            {
+              role: 'user',
+              content: `Flight search results below. Present each flight clearly: flight number, airline, departure → arrival times, duration, stops, and price. Be concise.\n${JSON.stringify(top4, null, 2)}`,
+            },
+          ], 768);
+
+          setMessages(prev => [...prev, { id: String(Date.now()), role: 'assistant', content: presentReply, timestamp: now() }]);
+        } else {
+          setMessages(prev => [...prev, {
+            id: String(Date.now()),
+            role: 'assistant',
+            content: `No flights found from ${params.origin} to ${params.destination} on ${params.departure_date}. Try different dates or a nearby airport?`,
+            timestamp: now(),
+          }]);
+        }
+      }
+    } catch {
+      setMessages(prev => [...prev, {
+        id: String(Date.now()),
+        role: 'assistant',
+        content: 'Unable to reach the server. Please check your connection and try again.',
+        timestamp: now(),
+      }]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   return (
@@ -339,13 +482,17 @@ export default function HomePage({ userEmail, onOpenProfile, onSignOut }: HomePa
           <CompanionPanel
             messages={messages}
             onSendMessage={handleSend}
-            assistantName="Intelligent Companion"
+            assistantName="Pathfinder"
             assistantSubtitle="AI-Powered Travel Curation"
             headerIcon={<SparkleIcon />}
             inputPlaceholder="Ask your curator..."
+            isTyping={isTyping}
+            inputLoading={isTyping}
+            inputDisabled={isTyping}
+            userName={userEmail}
             quickActions={[
-              { icon: <PlaneIcon />, label: 'Optimize flights' },
-              { icon: <BedIcon />, label: 'Suggest hotels' },
+              { icon: <PlaneIcon />, label: 'Optimize flights', onClick: () => handleSend('Optimize my flights for the best price and schedule.') },
+              { icon: <BedIcon />, label: 'Suggest hotels', onClick: () => handleSend('Suggest some great hotels for my trip.') },
             ]}
           />
         </div>
