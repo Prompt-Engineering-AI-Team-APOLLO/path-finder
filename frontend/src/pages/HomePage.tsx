@@ -6,8 +6,38 @@ import {
   CategoryCard,
   EditorPickCard,
   Button,
+  FlightCard,
 } from '../components/ui';
 import type { Message } from '../components/ui';
+
+interface FlightOffer {
+  offer_id: string;
+  flight_number: string;
+  airline: string;
+  origin: string;
+  destination: string;
+  origin_city: string;
+  destination_city: string;
+  departure_at: string;
+  arrival_at: string;
+  duration_minutes: number;
+  stops: number;
+  cabin_class: string;
+  price_per_person: number;
+  total_price: number;
+  currency: string;
+  baggage_included: boolean;
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function formatDuration(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -156,6 +186,9 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [flightResults, setFlightResults] = useState<FlightOffer[] | null>(null);
+  const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
+  const [flightRoute, setFlightRoute] = useState<{ from: string; to: string } | null>(null);
   const conversationId = useRef<string>(crypto.randomUUID());
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -260,32 +293,18 @@ Rules:
           }),
         });
         const flightData = await flightRes.json().catch(() => null);
-        const flights: Record<string, unknown>[] = flightData?.outbound_flights ?? [];
+        const flights: FlightOffer[] = flightData?.outbound_flights ?? [];
 
         if (flightRes.ok && flights.length > 0) {
-          const top4 = flights.slice(0, 4).map(f => ({
-            flight_number: f.flight_number,
-            airline: f.airline,
-            departure: f.departure_at,
-            arrival: f.arrival_at,
-            duration_minutes: f.duration_minutes,
-            stops: f.stops,
-            cabin: f.cabin_class,
-            price: `${f.currency} ${f.total_price}`,
-            baggage_included: f.baggage_included,
-          }));
-
-          const presentReply = await callChatAPI([
-            { role: 'system', content: SYSTEM_PROMPT },
-            ...history,
-            { role: 'assistant', content: cleanReply },
-            {
-              role: 'user',
-              content: `Flight search results below. Present each flight clearly: flight number, airline, departure → arrival times, duration, stops, and price. Be concise.\n${JSON.stringify(top4, null, 2)}`,
-            },
-          ], 768);
-
-          setMessages(prev => [...prev, { id: String(Date.now()), role: 'assistant', content: presentReply, timestamp: now() }]);
+          setFlightResults(flights);
+          setSelectedFlightId(null);
+          setFlightRoute({ from: params.origin, to: params.destination });
+          setMessages(prev => [...prev, {
+            id: String(Date.now()),
+            role: 'assistant',
+            content: `I found ${flights.length} flights from ${flightData.origin} to ${flightData.destination} on ${params.departure_date}. Check the panel on the right to compare and select your flight.`,
+            timestamp: now(),
+          }]);
         } else {
           setMessages(prev => [...prev, {
             id: String(Date.now()),
@@ -497,59 +516,116 @@ Rules:
           />
         </div>
 
-        {/* RIGHT: content grid */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
-          {/* Row 1: 3 category cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-            <CategoryCard
-              title="Hotels"
-              subtitle="428 Signature Properties"
-              imageCss="linear-gradient(160deg, #1a2a4a 0%, #0d1e35 100%)"
-              icon={
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
-                  <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>
-                </svg>
-              }
-            />
-            <CategoryCard
-              title="Flights"
-              subtitle="Global Routes & Private Charters"
-              imageCss="linear-gradient(160deg, #0a1a35 0%, #1a0d2e 100%)"
-              icon={
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
-                  <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-                </svg>
-              }
-            />
-            <CategoryCard
-              title="Restaurants"
-              subtitle="Michelin-Starred Experiences"
-              imageCss="linear-gradient(160deg, #2a1a0a 0%, #1a0a0a 100%)"
-              icon={
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
-                  <path d="M18 2h-2v7h-3V2H11v7H8.5a2.5 2.5 0 00-2.5 2.5V22h16V11.5A2.5 2.5 0 0019.5 9H18V2z"/>
-                </svg>
-              }
-            />
-          </div>
+        {/* RIGHT: flight results or default content */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0, overflowY: 'auto' }}>
+          {flightResults ? (
+            /* ── Flight results panel ── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase', marginBottom: 4 }}>
+                    Available Flights
+                  </p>
+                  <h2 style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', margin: 0 }}>
+                    {flightRoute?.from} → {flightRoute?.to}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setFlightResults(null); setSelectedFlightId(null); setFlightRoute(null); }}
+                  style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-full)', padding: '6px 14px', cursor: 'pointer', fontFamily: 'var(--font-sans)' }}
+                >
+                  ← Back
+                </button>
+              </div>
 
-          {/* Row 2: Italy card + Car card */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 14 }}>
-            <ItalyTrendingCard />
-            <CarRentalCard />
-          </div>
+              {/* Flight cards */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {flightResults.map((flight, i) => (
+                  <FlightCard
+                    key={flight.offer_id}
+                    airline={flight.airline}
+                    flightNumber={flight.flight_number}
+                    cabinClass={flight.cabin_class}
+                    departureTime={formatTime(flight.departure_at)}
+                    departureCode={flight.origin}
+                    arrivalTime={formatTime(flight.arrival_at)}
+                    arrivalCode={flight.destination}
+                    duration={formatDuration(flight.duration_minutes)}
+                    stops={flight.stops}
+                    price={flight.price_per_person}
+                    currency={flight.currency}
+                    recommended={i === 0}
+                    selected={selectedFlightId === flight.offer_id}
+                    onSelect={() => setSelectedFlightId(flight.offer_id)}
+                  />
+                ))}
+              </div>
 
-          {/* Row 3: Editor's pick */}
-          <EditorPickCard
-            imageCss="linear-gradient(135deg, #1a0a1a 0%, #0a1a2a 35%, #1a2a0a 100%)"
-            label="Editor's Pick"
-            title="Midnight in Florence"
-            description="A private walking tour through the Oltrarno district, followed by a candlelit dinner in a 16th-century palazzo — exclusively curated for Pathfinder members."
-            ctaLabel="Book Now"
-            onCta={() => {}}
-            secondaryCtaLabel="View All"
-            onSecondaryCta={() => {}}
-          />
+              {/* Book button */}
+              {selectedFlightId && (
+                <Button variant="primary" size="lg" fullWidth>
+                  Continue to Booking
+                </Button>
+              )}
+            </div>
+          ) : (
+            /* ── Default explore content ── */
+            <>
+              {/* Row 1: 3 category cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                <CategoryCard
+                  title="Hotels"
+                  subtitle="428 Signature Properties"
+                  imageCss="linear-gradient(160deg, #1a2a4a 0%, #0d1e35 100%)"
+                  icon={
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
+                      <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>
+                    </svg>
+                  }
+                />
+                <CategoryCard
+                  title="Flights"
+                  subtitle="Global Routes & Private Charters"
+                  imageCss="linear-gradient(160deg, #0a1a35 0%, #1a0d2e 100%)"
+                  icon={
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
+                      <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                    </svg>
+                  }
+                />
+                <CategoryCard
+                  title="Restaurants"
+                  subtitle="Michelin-Starred Experiences"
+                  imageCss="linear-gradient(160deg, #2a1a0a 0%, #1a0a0a 100%)"
+                  icon={
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
+                      <path d="M18 2h-2v7h-3V2H11v7H8.5a2.5 2.5 0 00-2.5 2.5V22h16V11.5A2.5 2.5 0 0019.5 9H18V2z"/>
+                    </svg>
+                  }
+                />
+              </div>
+
+              {/* Row 2: Italy card + Car card */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 14 }}>
+                <ItalyTrendingCard />
+                <CarRentalCard />
+              </div>
+
+              {/* Row 3: Editor's pick */}
+              <EditorPickCard
+                imageCss="linear-gradient(135deg, #1a0a1a 0%, #0a1a2a 35%, #1a2a0a 100%)"
+                label="Editor's Pick"
+                title="Midnight in Florence"
+                description="A private walking tour through the Oltrarno district, followed by a candlelit dinner in a 16th-century palazzo — exclusively curated for Pathfinder members."
+                ctaLabel="Book Now"
+                onCta={() => {}}
+                secondaryCtaLabel="View All"
+                onSecondaryCta={() => {}}
+              />
+            </>
+          )}
         </div>
       </div>
     </div>
