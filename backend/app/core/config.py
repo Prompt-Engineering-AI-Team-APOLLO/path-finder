@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = 2048
     OPENAI_TEMPERATURE: float = 0.7
 
+    # ── Groq (agent) ──────────────────────────────────────────────────────────
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+
     # ── Vector DB (Pinecone) ──────────────────────────────────────────────────
     PINECONE_API_KEY: str = ""
     PINECONE_ENVIRONMENT: str = ""
