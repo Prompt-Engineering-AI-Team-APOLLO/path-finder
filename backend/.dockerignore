@@ -1,0 +1,34 @@
+# Never bake secrets or local state into the image
+.env
+.env.local
+.env.*.local
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Dev tools
+.venv/
+venv/
+env/
+.pre-commit-config.yaml
+requirements-dev.txt
+
+# Tests (not needed in production image)
+tests/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Logs
+*.log
