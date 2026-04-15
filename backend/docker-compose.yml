@@ -9,10 +9,11 @@ services:
     env_file:
       - .env
     environment:
-      # These override .env values so Docker networking works correctly
-      DATABASE_URL: postgresql+asyncpg://postgres.nhkpvpgbuglngaquiziy:P%40thF1nd3r.0312@aws-1-us-east-2.pooler.supabase.com:5432/postgres
+      # DATABASE_URL comes from .env (pointing at Supabase).
+      # SSL must be true for Supabase connections.
       DATABASE_SSL: "true"
       DATABASE_PGBOUNCER: "false"
+      # Redis runs inside Docker on this network alias.
       REDIS_URL: redis://redis:6379/0
     volumes:
       - ./app:/app/app              # hot-reload: only mount source, not the whole image
