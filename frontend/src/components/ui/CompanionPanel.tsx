@@ -31,6 +31,7 @@ export interface CompanionPanelProps {
   quickActionsLabel?: string;
   inputDisabled?: boolean;
   inputLoading?: boolean;
+  userName?: string;
   className?: string;
 }
 
@@ -81,6 +82,7 @@ export default function CompanionPanel({
   quickActionsLabel,
   inputDisabled = false,
   inputLoading = false,
+  userName,
   className = '',
 }: CompanionPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -252,6 +254,7 @@ export default function CompanionPanel({
             timestamp={msg.timestamp}
             assistantName={assistantName}
             avatarSrc={assistantAvatarSrc}
+            userName={userName}
           />
         ))}
 
