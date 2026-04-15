@@ -8,6 +8,8 @@ type Page = 'login' | 'home' | 'plan' | 'confirm'
 type AuthSession = {
   email: string
   signedInAt: string
+  accessToken: string
+  refreshToken: string
 }
 
 const AUTH_SESSION_KEY = 'pathfinder_auth_session'
@@ -40,10 +42,12 @@ export default function App() {
     setSession(loadSession())
   }, [])
 
-  const handleSignInSuccess = ({ email, remember }: { email: string; remember: boolean }) => {
+  const handleSignInSuccess = ({ email, remember, accessToken, refreshToken }: { email: string; remember: boolean; accessToken: string; refreshToken: string }) => {
     const nextSession: AuthSession = {
       email,
       signedInAt: new Date().toISOString(),
+      accessToken,
+      refreshToken,
     }
 
     if (remember) {
@@ -113,6 +117,7 @@ export default function App() {
       {finalPage === 'home'    && (
         <HomePage
           userEmail={session?.email}
+          accessToken={session?.accessToken}
           onOpenProfile={() => setPage('home')}
           onSignOut={handleSignOut}
         />
