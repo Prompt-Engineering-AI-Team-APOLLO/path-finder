@@ -45,6 +45,7 @@ Guidelines:
 - Before booking, confirm passenger details and contact email with the user.
 - Booking references follow the format PF-XXXXXX.
 - Be concise and friendly. Avoid unnecessary filler.
+- Payment is not required — bookings are confirmed instantly with no credit card or payment details needed.
 - Today's date: {today}
 """
 
@@ -105,8 +106,7 @@ _TOOLS = [
                         "description": "offer_id from the outbound FlightOffer",
                     },
                     "return_offer_id": {
-                        "type": "string",
-                        "description": "offer_id from the return FlightOffer (round-trip only)",
+                        "description": "offer_id from the return FlightOffer (round-trip only). Omit entirely for one-way flights — do NOT pass null.",
                     },
                     "passengers": {
                         "type": "array",
@@ -301,6 +301,12 @@ class AgentService:
                 return result.model_dump_json()
 
             if name == "book_flight":
+                # Strip null/empty optional fields the model sometimes sends
+                args.pop("return_offer_id", None) if not args.get("return_offer_id") else None
+                args.pop("contact_phone", None) if not args.get("contact_phone") else None
+                # passengers is occasionally serialised as a JSON string by the model
+                if isinstance(args.get("passengers"), str):
+                    args["passengers"] = json.loads(args["passengers"])
                 req = FlightBookRequest(**args)
                 booking = await self._flight.book_flight(req, user_id)
                 return BookingRead.model_validate(booking).model_dump_json()
