@@ -8,12 +8,8 @@ type Page = 'login' | 'home' | 'plan' | 'confirm'
 type AuthSession = {
   email: string
   signedInAt: string
-<<<<<<< HEAD
-  access_token?: string
-=======
   accessToken: string
   refreshToken: string
->>>>>>> main
 }
 
 const AUTH_SESSION_KEY = 'pathfinder_auth_session'
@@ -46,20 +42,12 @@ export default function App() {
     setSession(loadSession())
   }, [])
 
-<<<<<<< HEAD
-  const handleSignInSuccess = ({ email, remember, access_token }: { email: string; remember: boolean; access_token?: string }) => {
-    const nextSession: AuthSession = {
-      email,
-      signedInAt: new Date().toISOString(),
-      access_token,
-=======
   const handleSignInSuccess = ({ email, remember, accessToken, refreshToken }: { email: string; remember: boolean; accessToken: string; refreshToken: string }) => {
     const nextSession: AuthSession = {
       email,
       signedInAt: new Date().toISOString(),
       accessToken,
       refreshToken,
->>>>>>> main
     }
 
     if (remember) {
