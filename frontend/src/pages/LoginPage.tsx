@@ -21,7 +21,7 @@ type AuthMode = 'signin' | 'signup';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 interface LoginPageProps {
-  onSignInSuccess?: (payload: { email: string; remember: boolean; access_token?: string }) => void;
+  onSignInSuccess?: (payload: { email: string; remember: boolean; accessToken: string; refreshToken: string }) => void;
 }
 
 /* ── Helpers ── */
@@ -72,7 +72,12 @@ export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
         return;
       }
       setSuccessMessage('Sign in successful.');
-      onSignInSuccess?.({ email: data.user?.email ?? '', remember, access_token: data.tokens?.access_token });
+      onSignInSuccess?.({
+        email: data.user?.email ?? email,
+        remember,
+        accessToken: data.tokens?.access_token ?? '',
+        refreshToken: data.tokens?.refresh_token ?? '',
+      });
     } catch {
       setErrors({ form: 'Cannot connect to backend. Ensure API is running on port 8000.' });
     } finally {
@@ -157,7 +162,12 @@ export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
         setErrors({});
       } else {
         setSuccessMessage('Sign in successful.');
-        onSignInSuccess?.({ email, remember, access_token: data.tokens?.access_token });
+        onSignInSuccess?.({
+          email: data.user?.email ?? email,
+          remember,
+          accessToken: data.tokens?.access_token ?? '',
+          refreshToken: data.tokens?.refresh_token ?? '',
+        });
       }
     } catch {
       setErrors({ form: 'Cannot connect to backend. Ensure API is running on port 8000.' });
