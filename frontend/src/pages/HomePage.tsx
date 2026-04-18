@@ -255,19 +255,25 @@ interface HomePageProps {
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   onClearChat?: () => void;
+  // Flight search state — lifted to App so it survives navigation
+  flightResults: FlightOffer[] | null;
+  setFlightResults: React.Dispatch<React.SetStateAction<FlightOffer[] | null>>;
+  rawFlightResults: FlightOffer[] | null;
+  setRawFlightResults: React.Dispatch<React.SetStateAction<FlightOffer[] | null>>;
+  showFlightResults: boolean;
+  setShowFlightResults: React.Dispatch<React.SetStateAction<boolean>>;
+  selectedFlightId: string | null;
+  setSelectedFlightId: React.Dispatch<React.SetStateAction<string | null>>;
+  flightRoute: { from: string; to: string } | null;
+  setFlightRoute: React.Dispatch<React.SetStateAction<{ from: string; to: string } | null>>;
+  passengerCount: number;
+  setPassengerCount: React.Dispatch<React.SetStateAction<number>>;
 }
 
-export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onContinueToBooking, onNavigate, messages, setMessages, onClearChat }: HomePageProps) {
+export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onContinueToBooking, onNavigate, messages, setMessages, onClearChat, flightResults, setFlightResults, rawFlightResults, setRawFlightResults, showFlightResults, setShowFlightResults, selectedFlightId, setSelectedFlightId, flightRoute, setFlightRoute, passengerCount, setPassengerCount }: HomePageProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  // rawFlightResults = full API results; flightResults = currently displayed (may be filtered)
-  const [rawFlightResults, setRawFlightResults] = useState<FlightOffer[] | null>(null);
-  const [flightResults, setFlightResults] = useState<FlightOffer[] | null>(null);
-  const [showFlightResults, setShowFlightResults] = useState(false);
-  const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
-  const [flightRoute, setFlightRoute] = useState<{ from: string; to: string } | null>(null);
   const [detailFlight, setDetailFlight] = useState<FlightOffer | null>(null);
-  const [passengerCount, setPassengerCount] = useState(1);
   const conversationId = useRef<string>(crypto.randomUUID());
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 

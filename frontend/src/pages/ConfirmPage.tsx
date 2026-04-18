@@ -45,8 +45,8 @@ const SearchIcon = () => (
 );
 
 const CONFIRM_STEPS = [
-  { number: '01', label: 'Search' },
-  { number: '02', label: 'Book' },
+  { number: '01', label: 'Welcome' },
+  { number: '02', label: 'Plan' },
   { number: '03', label: 'Confirm' },
 ];
 

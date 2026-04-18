@@ -80,6 +80,14 @@ export default function App() {
   const [session, setSession] = useState<AuthSession | null>(loadSession)
   const [messages, setMessages] = useState<Message[]>(loadMessages)
   const [confirmedBooking, setConfirmedBooking] = useState<BookingRead | null>(loadBooking)
+
+  // ── Flight search state — lifted so it survives page navigation ──
+  const [flightResults, setFlightResults] = useState<FlightOffer[] | null>(null)
+  const [rawFlightResults, setRawFlightResults] = useState<FlightOffer[] | null>(null)
+  const [showFlightResults, setShowFlightResults] = useState(false)
+  const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null)
+  const [flightRoute, setFlightRoute] = useState<{ from: string; to: string } | null>(null)
+  const [passengerCount, setPassengerCount] = useState(1)
   const [bookingContext, setBookingContext] = useState<BookingContext | null>(loadBookingCtx)
 
   // ── Persist page ──
@@ -203,6 +211,18 @@ export default function App() {
           onSignOut={handleSignOut}
           onContinueToBooking={handleContinueToBooking}
           onNavigate={navigate}
+          flightResults={flightResults}
+          setFlightResults={setFlightResults}
+          rawFlightResults={rawFlightResults}
+          setRawFlightResults={setRawFlightResults}
+          showFlightResults={showFlightResults}
+          setShowFlightResults={setShowFlightResults}
+          selectedFlightId={selectedFlightId}
+          setSelectedFlightId={setSelectedFlightId}
+          flightRoute={flightRoute}
+          setFlightRoute={setFlightRoute}
+          passengerCount={passengerCount}
+          setPassengerCount={setPassengerCount}
           {...sharedChat}
         />
       )}
@@ -229,6 +249,18 @@ export default function App() {
           onSignOut={handleSignOut}
           onContinueToBooking={handleContinueToBooking}
           onNavigate={navigate}
+          flightResults={flightResults}
+          setFlightResults={setFlightResults}
+          rawFlightResults={rawFlightResults}
+          setRawFlightResults={setRawFlightResults}
+          showFlightResults={showFlightResults}
+          setShowFlightResults={setShowFlightResults}
+          selectedFlightId={selectedFlightId}
+          setSelectedFlightId={setSelectedFlightId}
+          flightRoute={flightRoute}
+          setFlightRoute={setFlightRoute}
+          passengerCount={passengerCount}
+          setPassengerCount={setPassengerCount}
           {...sharedChat}
         />
       )}
