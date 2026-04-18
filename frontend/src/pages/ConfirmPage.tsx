@@ -11,6 +11,7 @@ import {
   SectionHeader,
 } from '../components/ui';
 import type { Message } from '../components/ui';
+import type { BookingRead } from './BookingPage';
 
 /* ── Icons ── */
 const SparkleIcon = () => (
@@ -103,8 +104,40 @@ function HotelConfirmCard() {
 /* ─────────────────────────────────────────────
    ConfirmPage
 ───────────────────────────────────────────── */
-export default function ConfirmPage() {
-  const [messages, setMessages] = useState<Message[]>(CONFIRM_MESSAGES);
+
+interface ConfirmPageProps {
+  bookingData?: BookingRead;
+  userEmail?: string;
+}
+
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function fmtDuration(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function fmtFullDate(iso: string) {
+  return new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+export default function ConfirmPage({ bookingData, userEmail }: ConfirmPageProps) {
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (bookingData) {
+      return [
+        {
+          id: '1',
+          role: 'assistant',
+          content: `Your booking is confirmed! Reference: **${bookingData.booking_reference}**. Your confirmation has been sent to ${bookingData.contact_email}. Is there anything else I can help you with for your journey?`,
+          timestamp: 'Just now',
+        },
+      ];
+    }
+    return CONFIRM_MESSAGES;
+  });
 
   const handleSend = (text: string) => {
     setMessages(prev => [...prev, {
@@ -133,6 +166,11 @@ export default function ConfirmPage() {
     />
   );
 
+  /* ── Derive display values from real or fallback data ── */
+  const bookingRef = bookingData?.booking_reference ?? 'PF-TYO-2024-8821';
+  const contactEmail = bookingData?.contact_email ?? 'voyager@example.com';
+  const flightPrice = bookingData?.total_price ?? 2890;
+
   /* ── Right panel ── */
   const rightPanel = (
     <div className="surface-light" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-bg-page-light)' }}>
@@ -147,28 +185,34 @@ export default function ConfirmPage() {
         <TripSummaryItem
           icon={<PlaneIcon />}
           label="Flights"
-          value="LHR → HND · Oct 12"
-          price={2890}
+          value={bookingData
+            ? `${bookingData.outbound_origin} → ${bookingData.outbound_destination} · ${fmtFullDate(bookingData.outbound_departure_at)}`
+            : 'LHR → HND · Oct 12'
+          }
+          price={flightPrice}
         />
 
-        <TripSummaryItem
-          icon={<BedIcon />}
-          label="Accommodation"
-          value="Park Hyatt Tokyo · 4 nights"
-          price={1840}
-        />
-
-        <TripSummaryItem
-          icon={<CompassIcon />}
-          label="Activities"
-          value="Mt. Fuji Private Tour"
-          price={320}
-          expandable
-        >
-          <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: 0 }}>
-            Full-day private guided tour with transport
-          </p>
-        </TripSummaryItem>
+        {!bookingData && (
+          <>
+            <TripSummaryItem
+              icon={<BedIcon />}
+              label="Accommodation"
+              value="Park Hyatt Tokyo · 4 nights"
+              price={1840}
+            />
+            <TripSummaryItem
+              icon={<CompassIcon />}
+              label="Activities"
+              value="Mt. Fuji Private Tour"
+              price={320}
+              expandable
+            >
+              <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: 0 }}>
+                Full-day private guided tour with transport
+              </p>
+            </TripSummaryItem>
+          </>
+        )}
 
         {/* Booking reference block */}
         <div
@@ -184,24 +228,63 @@ export default function ConfirmPage() {
             Booking Reference
           </p>
           <p style={{ color: 'var(--color-primary)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)', fontFamily: 'monospace', margin: 0 }}>
-            PF-TYO-2024-8821
+            {bookingRef}
           </p>
           <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '4px 0 0' }}>
-            Confirmation sent to voyager@example.com
+            Confirmation sent to {contactEmail}
           </p>
         </div>
+
+        {/* Passenger list (real booking only) */}
+        {bookingData && bookingData.passengers.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)', margin: '0 0 8px' }}>
+              Passengers
+            </p>
+            {bookingData.passengers.map((p, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: '10px 12px',
+                  background: 'var(--color-bg-surface)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-lg)',
+                  marginBottom: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--color-primary-subtle)', border: '1px solid var(--color-primary-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ color: 'var(--color-primary)', fontSize: 10, fontWeight: 700 }}>{i + 1}</span>
+                </div>
+                <div>
+                  <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-xs)', fontWeight: 600, margin: 0 }}>
+                    {p.first_name} {p.last_name}
+                  </p>
+                  {p.nationality && (
+                    <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 10, margin: '1px 0 0' }}>{p.nationality}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <TotalCostBar
-        label="Total Trip Cost"
-        totalPrice={5050}
-        subLabel="All inclusive · taxes & fees"
+        label="Total Cost"
+        totalPrice={bookingData ? flightPrice : 5050}
+        subLabel={bookingData ? `${bookingData.passenger_count} passenger${bookingData.passenger_count > 1 ? 's' : ''} · taxes & fees included` : 'All inclusive · taxes & fees'}
         ctaLabel="Download PDF"
-        breakdown={[
-          { label: 'Business Class Flights', amount: 2890 },
-          { label: 'Park Hyatt Tokyo (4 nights)', amount: 1840 },
-          { label: 'Mt. Fuji Private Tour', amount: 320 },
-        ]}
+        breakdown={bookingData
+          ? [{ label: `${bookingData.outbound_airline} ${bookingData.outbound_flight_number} (${bookingData.passenger_count} pax)`, amount: flightPrice }]
+          : [
+              { label: 'Business Class Flights', amount: 2890 },
+              { label: 'Park Hyatt Tokyo (4 nights)', amount: 1840 },
+              { label: 'Mt. Fuji Private Tour', amount: 320 },
+            ]
+        }
       />
     </div>
   );
@@ -212,7 +295,7 @@ export default function ConfirmPage() {
       <TopNav
         steps={CONFIRM_STEPS}
         currentStep={2}
-        userName="Alex Morgan"
+        userName={bookingData?.passengers[0] ? `${bookingData.passengers[0].first_name} ${bookingData.passengers[0].last_name}` : userEmail ?? 'Alex Morgan'}
         notificationCount={1}
       />
       <PageLayout
@@ -259,7 +342,10 @@ export default function ConfirmPage() {
               Booking Confirmed!
             </h1>
             <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: 0 }}>
-              Your Tokyo journey is all set. Have an extraordinary trip, Alex.
+              {bookingData
+                ? `Your flight from ${bookingData.outbound_origin_city} to ${bookingData.outbound_destination_city} is confirmed. Ref: ${bookingData.booking_reference}`
+                : 'Your Tokyo journey is all set. Have an extraordinary trip, Alex.'
+              }
             </p>
           </div>
 
@@ -271,19 +357,21 @@ export default function ConfirmPage() {
           />
           <div style={{ marginTop: 14, marginBottom: 24 }}>
             <ConfirmationCard
-              airline="Japan Airlines"
-              flightNumber="JP 448"
-              cabinClass="Business Class"
-              departureTime="13:50"
-              departureCode="LHR"
-              departureCity="London Heathrow"
-              arrivalTime="09:35"
-              arrivalCode="HND"
-              arrivalCity="Tokyo Haneda"
-              duration="11h 45m"
-              date="12 October 2024"
-              seat="3A"
-              bookingRef="JL-2024-8821"
+              airline={bookingData?.outbound_airline ?? 'Japan Airlines'}
+              flightNumber={bookingData?.outbound_flight_number ?? 'JP 448'}
+              cabinClass={bookingData
+                ? bookingData.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+                : 'Business Class'
+              }
+              departureTime={bookingData ? fmtTime(bookingData.outbound_departure_at) : '13:50'}
+              departureCode={bookingData?.outbound_origin ?? 'LHR'}
+              departureCity={bookingData?.outbound_origin_city ?? 'London Heathrow'}
+              arrivalTime={bookingData ? fmtTime(bookingData.outbound_arrival_at) : '09:35'}
+              arrivalCode={bookingData?.outbound_destination ?? 'HND'}
+              arrivalCity={bookingData?.outbound_destination_city ?? 'Tokyo Haneda'}
+              duration={bookingData ? fmtDuration(bookingData.outbound_duration_minutes) : '11h 45m'}
+              date={bookingData ? fmtFullDate(bookingData.outbound_departure_at) : '12 October 2024'}
+              bookingRef={bookingData?.booking_reference ?? 'JL-2024-8821'}
             />
           </div>
 

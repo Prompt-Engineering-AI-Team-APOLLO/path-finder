@@ -256,9 +256,10 @@ interface HomePageProps {
   accessToken?: string;
   onOpenProfile?: () => void;
   onSignOut?: () => void;
+  onContinueToBooking?: (flight: FlightOffer, passengerCount: number) => void;
 }
 
-export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut }: HomePageProps) {
+export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onContinueToBooking }: HomePageProps) {
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -269,6 +270,7 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
   const [flightRoute, setFlightRoute] = useState<{ from: string; to: string } | null>(null);
   const [detailFlight, setDetailFlight] = useState<FlightOffer | null>(null);
+  const [passengerCount, setPassengerCount] = useState(1);
   const conversationId = useRef<string>(crypto.randomUUID());
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -451,6 +453,7 @@ Other rules:
           setShowFlightResults(true);
           setSelectedFlightId(null);
           setFlightRoute({ from: params.origin, to: params.destination });
+          setPassengerCount(params.passengers ?? 1);
         }
       } else if (params && hasFilterParams(params) && rawFlightResults) {
         // Filter existing results (always against the raw set so filters don't compound destructively)
@@ -756,8 +759,16 @@ Other rules:
 
               {/* Book button */}
               {selectedFlightId && (
-                <Button variant="primary" size="lg" fullWidth>
-                  Continue to Booking
+                <Button
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  onClick={() => {
+                    const flight = flightResults?.find(f => f.offer_id === selectedFlightId);
+                    if (flight && onContinueToBooking) onContinueToBooking(flight, passengerCount);
+                  }}
+                >
+                  Continue to Booking →
                 </Button>
               )}
             </div>

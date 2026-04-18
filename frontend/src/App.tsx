@@ -3,13 +3,21 @@ import LoginPage from './pages/LoginPage'
 import HomePage from './pages/HomePage'
 import PlanPage from './pages/PlanPage'
 import ConfirmPage from './pages/ConfirmPage'
+import BookingPage from './pages/BookingPage'
+import type { FlightOffer, BookingRead } from './pages/BookingPage'
 
-type Page = 'login' | 'home' | 'plan' | 'confirm'
+type Page = 'login' | 'home' | 'plan' | 'confirm' | 'booking'
+
 type AuthSession = {
   email: string
   signedInAt: string
   accessToken: string
   refreshToken: string
+}
+
+interface BookingContext {
+  flight: FlightOffer
+  passengerCount: number
 }
 
 const AUTH_SESSION_KEY = 'pathfinder_auth_session'
@@ -30,6 +38,7 @@ const loadSession = (): AuthSession | null => {
 const PAGES: { id: Page; label: string }[] = [
   { id: 'login', label: 'Login' },
   { id: 'home', label: 'Home' },
+  { id: 'booking', label: 'Booking' },
   { id: 'plan', label: 'Plan' },
   { id: 'confirm', label: 'Confirm' },
 ]
@@ -37,6 +46,8 @@ const PAGES: { id: Page; label: string }[] = [
 export default function App() {
   const [page, setPage] = useState<Page>('login')
   const [session, setSession] = useState<AuthSession | null>(null)
+  const [bookingContext, setBookingContext] = useState<BookingContext | null>(null)
+  const [confirmedBooking, setConfirmedBooking] = useState<BookingRead | null>(null)
 
   useEffect(() => {
     setSession(loadSession())
@@ -67,6 +78,16 @@ export default function App() {
     sessionStorage.removeItem(AUTH_SESSION_KEY)
     setSession(null)
     setPage('login')
+  }
+
+  const handleContinueToBooking = (flight: FlightOffer, passengerCount: number) => {
+    setBookingContext({ flight, passengerCount })
+    setPage('booking')
+  }
+
+  const handleBookingComplete = (booking: BookingRead) => {
+    setConfirmedBooking(booking)
+    setPage('confirm')
   }
 
   const finalPage: Page = page
@@ -113,17 +134,34 @@ export default function App() {
         ))}
       </nav>
 
-      {finalPage === 'login'   && <LoginPage onSignInSuccess={handleSignInSuccess} />}
-      {finalPage === 'home'    && (
+      {finalPage === 'login' && <LoginPage onSignInSuccess={handleSignInSuccess} />}
+
+      {finalPage === 'home' && (
         <HomePage
           userEmail={session?.email}
           accessToken={session?.accessToken}
           onOpenProfile={() => setPage('home')}
           onSignOut={handleSignOut}
+          onContinueToBooking={handleContinueToBooking}
         />
       )}
-      {finalPage === 'plan'    && <PlanPage />}
-      {finalPage === 'confirm' && <ConfirmPage />}
+
+      {finalPage === 'booking' && bookingContext && (
+        <BookingPage
+          flight={bookingContext.flight}
+          passengerCount={bookingContext.passengerCount}
+          accessToken={session?.accessToken}
+          userEmail={session?.email}
+          onBack={() => setPage('home')}
+          onBookingComplete={handleBookingComplete}
+        />
+      )}
+
+      {finalPage === 'plan' && <PlanPage />}
+
+      {finalPage === 'confirm' && (
+        <ConfirmPage bookingData={confirmedBooking ?? undefined} userEmail={session?.email} />
+      )}
     </div>
   )
 }
