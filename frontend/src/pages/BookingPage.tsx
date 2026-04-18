@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { TopNav, Button, Input, Badge } from '../components/ui';
+import type { Message } from '../components/ui';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -63,6 +64,10 @@ export interface BookingPageProps {
   userEmail?: string;
   onBack: () => void;
   onBookingComplete: (booking: BookingRead) => void;
+  onNavigate?: (page: string) => void;
+  messages?: Message[];
+  setMessages?: React.Dispatch<React.SetStateAction<Message[]>>;
+  onClearChat?: () => void;
 }
 
 // ── Internal form type ────────────────────────────────────────────────────────
@@ -207,6 +212,7 @@ export default function BookingPage({
   userEmail,
   onBack,
   onBookingComplete,
+  onNavigate,
 }: BookingPageProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [passengers, setPassengers] = useState<PassengerForm[]>(
@@ -877,7 +883,15 @@ export default function BookingPage({
 
   return (
     <>
-      <TopNav steps={BOOKING_STEPS} currentStep={1} userName={userEmail} />
+      <TopNav
+        steps={BOOKING_STEPS}
+        currentStep={1}
+        userName={userEmail}
+        onStepClick={(i) => {
+          if (i === 0) onBack();
+          else if (i === 2 && onNavigate) onNavigate('confirm');
+        }}
+      />
       <div
         style={{
           display: 'flex',
