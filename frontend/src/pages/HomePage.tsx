@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Badge,
   StepIndicator,
@@ -54,12 +54,6 @@ CONVERSATION FLOW:
 3. Assume 1 passenger and economy unless stated otherwise.
 4. After flight results are shown, briefly highlight the best 1-2 options and ask which they'd like to book.`;
 
-const WELCOME_MESSAGE: Message = {
-  id: 'welcome',
-  role: 'assistant',
-  content: "Hi! I'm your AI travel curator. Tell me where you'd like to go and I'll plan the perfect trip — flights, activities, dining, and more. Where shall we begin?",
-  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-};
 
 /* ── Flight detail modal ── */
 function FlightDetailModal({ flight, onClose }: { flight: FlightOffer; onClose: () => void }) {
@@ -257,10 +251,13 @@ interface HomePageProps {
   onOpenProfile?: () => void;
   onSignOut?: () => void;
   onContinueToBooking?: (flight: FlightOffer, passengerCount: number) => void;
+  onNavigate?: (page: string) => void;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  onClearChat?: () => void;
 }
 
-export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onContinueToBooking }: HomePageProps) {
-  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onContinueToBooking, onNavigate, messages, setMessages, onClearChat }: HomePageProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   // rawFlightResults = full API results; flightResults = currently displayed (may be filtered)
@@ -619,7 +616,14 @@ Other rules:
             )}
           </div>
 
-          <StepIndicator steps={STEPS} currentStep={0} />
+          <StepIndicator
+            steps={STEPS}
+            currentStep={0}
+            onStepClick={(i) => {
+              const pages = ['home', 'plan', 'confirm'];
+              if (pages[i] && pages[i] !== 'home') onNavigate?.(pages[i]);
+            }}
+          />
         </div>
       </div>
 
@@ -650,6 +654,7 @@ Other rules:
           <CompanionPanel
             messages={messages}
             onSendMessage={handleSend}
+            onClearChat={onClearChat}
             assistantName="Pathfinder"
             assistantSubtitle="AI-Powered Travel Curation"
             headerIcon={<SparkleIcon />}
