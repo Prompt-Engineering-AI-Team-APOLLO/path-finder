@@ -111,7 +111,7 @@ export default function PlanPage() {
       const sessionRaw =
         localStorage.getItem('pathfinder_auth_session') ||
         sessionStorage.getItem('pathfinder_auth_session');
-      const token = sessionRaw ? JSON.parse(sessionRaw)?.access_token : null;
+      const token = sessionRaw ? JSON.parse(sessionRaw)?.accessToken : null;
 
       const res = await fetch(`${API_BASE}/agent/chat`, {
         method: 'POST',
