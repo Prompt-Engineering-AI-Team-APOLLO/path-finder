@@ -8,12 +8,14 @@ export interface Step {
 export interface StepIndicatorProps {
   steps: Step[];
   currentStep: number;
+  onStepClick?: (index: number) => void;
   className?: string;
 }
 
 export default function StepIndicator({
   steps,
   currentStep,
+  onStepClick,
   className = '',
 }: StepIndicatorProps) {
   return (
@@ -27,11 +29,13 @@ export default function StepIndicator({
         const isCompleted = index < currentStep;
         const isActive = index === currentStep;
         const isPending = index > currentStep;
+        const clickable = !!onStepClick && !isActive;
 
         return (
           <React.Fragment key={step.number}>
             <div
               role="listitem"
+              onClick={clickable ? () => onStepClick(index) : undefined}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -45,6 +49,7 @@ export default function StepIndicator({
                   ? '1px solid var(--color-primary-border)'
                   : '1px solid transparent',
                 transition: 'var(--transition-base)',
+                cursor: clickable ? 'pointer' : 'default',
               }}
               aria-current={isActive ? 'step' : undefined}
             >

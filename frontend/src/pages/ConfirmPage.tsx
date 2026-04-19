@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   TopNav,
   PageLayout,
@@ -11,6 +10,7 @@ import {
   SectionHeader,
 } from '../components/ui';
 import type { Message } from '../components/ui';
+import type { BookingRead } from './BookingPage';
 
 /* ── Icons ── */
 const SparkleIcon = () => (
@@ -21,16 +21,6 @@ const SparkleIcon = () => (
 const PlaneIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
     <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-  </svg>
-);
-const BedIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <path d="M2 4v16M2 8h18a2 2 0 012 2v8H2M2 12h20"/>
-  </svg>
-);
-const CompassIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
   </svg>
 );
 const PassportIcon = () => (
@@ -48,63 +38,51 @@ const StarIcon = () => (
     <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
   </svg>
 );
-
-/* ── Static conversation ── */
-const CONFIRM_MESSAGES: Message[] = [
-  {
-    id: '1',
-    role: 'assistant',
-    content: "🎉 Incredible choice! Your trip to Tokyo is officially confirmed. I've already added the Mt. Fuji tour to your digital itinerary. Is there anything else I can help you prepare for your journey?",
-    timestamp: 'Just now',
-  },
-];
+const SearchIcon = () => (
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+);
 
 const CONFIRM_STEPS = [
-  { number: '01', label: 'Explore' },
-  { number: '02', label: 'Bookings' },
+  { number: '01', label: 'Welcome' },
+  { number: '02', label: 'Plan' },
   { number: '03', label: 'Confirm' },
 ];
 
-/* ── Confirmed hotel mini card ── */
-function HotelConfirmCard() {
-  return (
-    <div
-      style={{
-        background: 'var(--color-bg-surface)',
-        border: '1.5px solid var(--color-green-border)',
-        borderRadius: 'var(--radius-xl)',
-        overflow: 'hidden',
-        boxShadow: 'var(--shadow-sm)',
-      }}
-    >
-      {/* Placeholder hotel image gradient */}
-      <div style={{ height: 80, background: 'linear-gradient(135deg, #1a2a4a 0%, #0d3040 100%)', position: 'relative' }}>
-        <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, opacity: 0.25 }}>🏨</div>
-        <div style={{ position: 'absolute', top: 8, right: 8 }}>
-          <Badge variant="confirmed" dot>Confirmed</Badge>
-        </div>
-      </div>
-      <div style={{ padding: '12px 14px' }}>
-        <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', margin: '0 0 2px' }}>
-          Park Hyatt Tokyo
-        </p>
-        <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '0 0 8px' }}>
-          Shinjuku · Deluxe King · 4 nights
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)' }}>Oct 12 – 16</span>
-          <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>$1,840</span>
-        </div>
-      </div>
-    </div>
-  );
+/* ── Helpers ── */
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+function fmtDuration(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+function fmtFullDate(iso: string) {
+  return new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 /* ─────────────────────────────────────────────
    ConfirmPage
 ───────────────────────────────────────────── */
-export default function ConfirmPage() {
-  const [messages, setMessages] = useState<Message[]>(CONFIRM_MESSAGES);
+interface ConfirmPageProps {
+  bookingData?: BookingRead;
+  userEmail?: string;
+  onNavigate?: (page: string) => void;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  onClearChat?: () => void;
+}
+
+export default function ConfirmPage({
+  bookingData,
+  userEmail,
+  onNavigate,
+  messages,
+  setMessages,
+  onClearChat,
+}: ConfirmPageProps) {
 
   const handleSend = (text: string) => {
     setMessages(prev => [...prev, {
@@ -120,6 +98,7 @@ export default function ConfirmPage() {
     <CompanionPanel
       messages={messages}
       onSendMessage={handleSend}
+      onClearChat={onClearChat}
       assistantName="Pathfinder AI"
       assistantSubtitle="Your Personal Concierge"
       headerIcon={<SparkleIcon />}
@@ -128,7 +107,7 @@ export default function ConfirmPage() {
       quickActions={[
         { icon: <PassportIcon />, label: 'Check Visa Requirements' },
         { icon: <DownloadIcon />, label: 'Download Itinerary' },
-        { icon: <StarIcon />, label: 'Hotel Upgrade' },
+        { icon: <StarIcon />, label: 'Search flights', onClick: () => onNavigate?.('home') },
       ]}
     />
   );
@@ -141,67 +120,98 @@ export default function ConfirmPage() {
           <h2 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', margin: 0 }}>
             Trip Summary
           </h2>
-          <Badge variant="confirmed" dot>All Confirmed</Badge>
+          {bookingData && <Badge variant="confirmed" dot>Confirmed</Badge>}
         </div>
 
-        <TripSummaryItem
-          icon={<PlaneIcon />}
-          label="Flights"
-          value="LHR → HND · Oct 12"
-          price={2890}
-        />
+        {bookingData ? (
+          <>
+            <TripSummaryItem
+              icon={<PlaneIcon />}
+              label="Flights"
+              value={`${bookingData.outbound_origin} → ${bookingData.outbound_destination} · ${fmtFullDate(bookingData.outbound_departure_at)}`}
+              price={bookingData.total_price}
+            />
 
-        <TripSummaryItem
-          icon={<BedIcon />}
-          label="Accommodation"
-          value="Park Hyatt Tokyo · 4 nights"
-          price={1840}
-        />
+            {/* Booking reference */}
+            <div
+              style={{
+                marginTop: 20,
+                padding: '14px',
+                background: 'var(--color-primary-subtle)',
+                border: '1px solid var(--color-primary-border)',
+                borderRadius: 'var(--radius-lg)',
+              }}
+            >
+              <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)', margin: '0 0 6px' }}>
+                Booking Reference
+              </p>
+              <p style={{ color: 'var(--color-primary)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)', fontFamily: 'monospace', margin: 0 }}>
+                {bookingData.booking_reference}
+              </p>
+              <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '4px 0 0' }}>
+                Confirmation sent to {bookingData.contact_email}
+              </p>
+            </div>
 
-        <TripSummaryItem
-          icon={<CompassIcon />}
-          label="Activities"
-          value="Mt. Fuji Private Tour"
-          price={320}
-          expandable
-        >
-          <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: 0 }}>
-            Full-day private guided tour with transport
-          </p>
-        </TripSummaryItem>
-
-        {/* Booking reference block */}
-        <div
-          style={{
-            marginTop: 20,
-            padding: '14px',
-            background: 'var(--color-primary-subtle)',
-            border: '1px solid var(--color-primary-border)',
-            borderRadius: 'var(--radius-lg)',
-          }}
-        >
-          <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)', margin: '0 0 6px' }}>
-            Booking Reference
-          </p>
-          <p style={{ color: 'var(--color-primary)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)', fontFamily: 'monospace', margin: 0 }}>
-            PF-TYO-2024-8821
-          </p>
-          <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '4px 0 0' }}>
-            Confirmation sent to voyager@example.com
-          </p>
-        </div>
+            {/* Passengers */}
+            {bookingData.passengers.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)', margin: '0 0 8px' }}>
+                  Passengers
+                </p>
+                {bookingData.passengers.map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: '10px 12px',
+                      background: 'var(--color-bg-surface)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-lg)',
+                      marginBottom: 6,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--color-primary-subtle)', border: '1px solid var(--color-primary-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ color: 'var(--color-primary)', fontSize: 10, fontWeight: 700 }}>{i + 1}</span>
+                    </div>
+                    <div>
+                      <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-xs)', fontWeight: 600, margin: 0 }}>
+                        {p.first_name} {p.last_name}
+                      </p>
+                      {p.nationality && (
+                        <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 10, margin: '1px 0 0' }}>{p.nationality}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          /* No booking state */
+          <div style={{ padding: '32px 16px', textAlign: 'center' }}>
+            <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-sm)', margin: 0, lineHeight: 1.6 }}>
+              No confirmed booking yet. Search for a flight to get started.
+            </p>
+          </div>
+        )}
       </div>
 
       <TotalCostBar
-        label="Total Trip Cost"
-        totalPrice={5050}
-        subLabel="All inclusive · taxes & fees"
+        label="Total Cost"
+        totalPrice={bookingData?.total_price ?? 0}
+        subLabel={bookingData
+          ? `${bookingData.passenger_count} passenger${bookingData.passenger_count > 1 ? 's' : ''} · taxes & fees included`
+          : 'No booking confirmed'
+        }
         ctaLabel="Download PDF"
-        breakdown={[
-          { label: 'Business Class Flights', amount: 2890 },
-          { label: 'Park Hyatt Tokyo (4 nights)', amount: 1840 },
-          { label: 'Mt. Fuji Private Tour', amount: 320 },
-        ]}
+        ctaDisabled={!bookingData}
+        breakdown={bookingData
+          ? [{ label: `${bookingData.outbound_airline} ${bookingData.outbound_flight_number} (${bookingData.passenger_count} pax)`, amount: bookingData.total_price }]
+          : []
+        }
       />
     </div>
   );
@@ -212,8 +222,15 @@ export default function ConfirmPage() {
       <TopNav
         steps={CONFIRM_STEPS}
         currentStep={2}
-        userName="Alex Morgan"
-        notificationCount={1}
+        userName={bookingData?.passengers[0]
+          ? `${bookingData.passengers[0].first_name} ${bookingData.passengers[0].last_name}`
+          : userEmail
+        }
+        notificationCount={0}
+        onStepClick={(i) => {
+          const pages = ['home', 'home', 'confirm'];
+          if (pages[i] && pages[i] !== 'confirm') onNavigate?.(pages[i]);
+        }}
       />
       <PageLayout
         leftPanel={leftPanel}
@@ -226,141 +243,172 @@ export default function ConfirmPage() {
           className="surface-light"
           style={{ padding: '28px 28px', background: 'var(--color-bg-page-light)', minHeight: '100%' }}
         >
-          {/* Confirmation hero */}
-          <div
-            style={{
-              textAlign: 'center',
-              marginBottom: 28,
-              padding: '24px',
-              background: 'var(--color-bg-surface)',
-              borderRadius: 'var(--radius-2xl)',
-              border: '1.5px solid var(--color-green-border)',
-              boxShadow: 'var(--shadow-card)',
-            }}
-          >
-            <div
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: '50%',
-                background: 'var(--color-green-bg)',
-                border: '2px solid var(--color-green-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 14px',
-              }}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-              </svg>
-            </div>
-            <h1 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-extrabold)', letterSpacing: 'var(--tracking-tight)', margin: '0 0 6px' }}>
-              Booking Confirmed!
-            </h1>
-            <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: 0 }}>
-              Your Tokyo journey is all set. Have an extraordinary trip, Alex.
-            </p>
-          </div>
-
-          {/* Flight confirmation card */}
-          <SectionHeader
-            icon={<PlaneIcon />}
-            heading="Your Flight"
-            theme="light"
-          />
-          <div style={{ marginTop: 14, marginBottom: 24 }}>
-            <ConfirmationCard
-              airline="Japan Airlines"
-              flightNumber="JP 448"
-              cabinClass="Business Class"
-              departureTime="13:50"
-              departureCode="LHR"
-              departureCity="London Heathrow"
-              arrivalTime="09:35"
-              arrivalCode="HND"
-              arrivalCity="Tokyo Haneda"
-              duration="11h 45m"
-              date="12 October 2024"
-              seat="3A"
-              bookingRef="JL-2024-8821"
-            />
-          </div>
-
-          {/* Hotel card */}
-          <SectionHeader
-            icon={<BedIcon />}
-            heading="Your Hotel"
-            theme="light"
-          />
-          <div style={{ marginTop: 14, marginBottom: 24 }}>
-            <HotelConfirmCard />
-          </div>
-
-          {/* Activities */}
-          <SectionHeader
-            icon={<CompassIcon />}
-            heading="Activities"
-            theme="light"
-          />
-          <div
-            style={{
-              marginTop: 14,
-              padding: '16px',
-              background: 'var(--color-bg-surface)',
-              border: '1.5px solid var(--color-border)',
-              borderRadius: 'var(--radius-xl)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              boxShadow: 'var(--shadow-sm)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {bookingData ? (
+            /* ── Confirmed booking view ── */
+            <>
+              {/* Hero */}
               <div
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 'var(--radius-lg)',
-                  background: 'linear-gradient(135deg, #2a4a2a 0%, #1a3a1a 100%)',
+                  textAlign: 'center',
+                  marginBottom: 28,
+                  padding: '24px',
+                  background: 'var(--color-bg-surface)',
+                  borderRadius: 'var(--radius-2xl)',
+                  border: '1.5px solid var(--color-green-border)',
+                  boxShadow: 'var(--shadow-card)',
+                }}
+              >
+                <div
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: '50%',
+                    background: 'var(--color-green-bg)',
+                    border: '2px solid var(--color-green-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 14px',
+                  }}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                </div>
+                <h1 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-extrabold)', letterSpacing: 'var(--tracking-tight)', margin: '0 0 6px' }}>
+                  Booking Confirmed!
+                </h1>
+                <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: 0 }}>
+                  Your flight from {bookingData.outbound_origin_city} to {bookingData.outbound_destination_city} is confirmed.
+                </p>
+                <p style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', fontFamily: 'monospace', margin: '8px 0 0' }}>
+                  Ref: {bookingData.booking_reference}
+                </p>
+              </div>
+
+              {/* Flight confirmation card */}
+              <SectionHeader icon={<PlaneIcon />} heading="Your Flight" theme="light" />
+              <div style={{ marginTop: 14, marginBottom: 24 }}>
+                <ConfirmationCard
+                  airline={bookingData.outbound_airline}
+                  flightNumber={bookingData.outbound_flight_number}
+                  cabinClass={bookingData.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                  departureTime={fmtTime(bookingData.outbound_departure_at)}
+                  departureCode={bookingData.outbound_origin}
+                  departureCity={bookingData.outbound_origin_city}
+                  arrivalTime={fmtTime(bookingData.outbound_arrival_at)}
+                  arrivalCode={bookingData.outbound_destination}
+                  arrivalCity={bookingData.outbound_destination_city}
+                  duration={fmtDuration(bookingData.outbound_duration_minutes)}
+                  date={fmtFullDate(bookingData.outbound_departure_at)}
+                  bookingRef={bookingData.booking_reference}
+                />
+              </div>
+
+              {/* Passengers */}
+              <SectionHeader icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+                </svg>
+              } heading="Passengers" theme="light" />
+              <div style={{ marginTop: 14, marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {bookingData.passengers.map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: '16px 20px',
+                      background: 'var(--color-bg-surface)',
+                      border: '1.5px solid var(--color-border)',
+                      borderRadius: 'var(--radius-xl)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 14,
+                      boxShadow: 'var(--shadow-sm)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: '50%',
+                        background: 'var(--color-primary-subtle)',
+                        border: '1.5px solid var(--color-primary-border)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{i + 1}</span>
+                    </div>
+                    <div>
+                      <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', margin: 0 }}>
+                        {p.first_name} {p.last_name}
+                      </p>
+                      <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '3px 0 0' }}>
+                        DOB: {p.date_of_birth}
+                        {p.nationality ? ` · ${p.nationality}` : ''}
+                        {p.passport_number ? ` · ${p.passport_number}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                <Button variant="primary" size="md" icon={<DownloadIcon />} iconPosition="left">
+                  Download Itinerary
+                </Button>
+                <Button variant="secondary" size="md">
+                  Share Trip
+                </Button>
+                <Button variant="ghost" size="md" onClick={() => onNavigate?.('home')}>
+                  Search More Flights
+                </Button>
+              </div>
+            </>
+          ) : (
+            /* ── Empty state: no booking yet ── */
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '60vh',
+                textAlign: 'center',
+                gap: 20,
+              }}
+            >
+              <div
+                style={{
+                  width: 80,
+                  height: 80,
+                  borderRadius: '50%',
+                  background: 'var(--color-bg-surface)',
+                  border: '1.5px solid var(--color-border)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 20,
-                  flexShrink: 0,
+                  color: 'var(--color-text-dark-muted)',
                 }}
-                aria-hidden
               >
-                🗻
+                <SearchIcon />
               </div>
-              <div style={{ marginLeft: 14 }}>
-                <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', margin: '0 0 2px' }}>
-                  Mt. Fuji Private Tour
+              <div>
+                <h2 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', margin: '0 0 8px' }}>
+                  No Booking Yet
+                </h2>
+                <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 24px', maxWidth: 340, lineHeight: 1.6 }}>
+                  Search for a flight, select your preferred option, and complete the booking form to see your confirmation here.
                 </p>
-                <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: 0 }}>
-                  Oct 14 · Full day · Private guide included
-                </p>
+                <Button variant="primary" size="md" onClick={() => onNavigate?.('home')}>
+                  Search Flights →
+                </Button>
               </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-              <Badge variant="confirmed">Confirmed</Badge>
-              <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>$320</span>
-            </div>
-          </div>
-
-          {/* Actions row */}
-          <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-            <Button variant="primary" size="md" icon={<DownloadIcon />} iconPosition="left">
-              Download Itinerary
-            </Button>
-            <Button variant="secondary" size="md">
-              Share Trip
-            </Button>
-            <Button variant="ghost" size="md">
-              View on Map
-            </Button>
-          </div>
+          )}
         </div>
       </PageLayout>
     </>
