@@ -20,6 +20,7 @@ export interface QuickActionItem {
 export interface CompanionPanelProps {
   messages: Message[];
   onSendMessage?: (message: string) => void;
+  onClearChat?: () => void;
   assistantName?: string;
   assistantSubtitle?: string;
   assistantAvatarSrc?: string;
@@ -71,6 +72,7 @@ function TypingIndicator() {
 export default function CompanionPanel({
   messages,
   onSendMessage,
+  onClearChat,
   assistantName = 'Pathfinder AI',
   assistantSubtitle,
   assistantAvatarSrc,
@@ -112,7 +114,8 @@ export default function CompanionPanel({
           flexShrink: 0,
         }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3" style={{ justifyContent: 'space-between' }}>
+          <div className="flex items-center gap-3" style={{ flex: 1, minWidth: 0 }}>
           <div className="relative shrink-0">
             {headerIcon ? (
               <div
@@ -191,6 +194,35 @@ export default function CompanionPanel({
             </p>
             )}
           </div>
+          </div>
+          {onClearChat && (
+            <button
+              type="button"
+              onClick={onClearChat}
+              title="Clear chat"
+              style={{
+                background: 'none',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--color-text-muted)',
+                cursor: 'pointer',
+                padding: '5px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 'var(--text-xs)',
+                fontFamily: 'var(--font-sans)',
+                flexShrink: 0,
+                transition: 'var(--transition-base)',
+              }}
+              className="hover:border-[var(--color-coral)] hover:text-[var(--color-coral)]"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+              </svg>
+              Clear
+            </button>
+          )}
         </div>
       </div>
 

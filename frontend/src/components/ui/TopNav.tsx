@@ -5,6 +5,7 @@ import Avatar from './Avatar';
 export interface TopNavProps {
   steps?: Step[];
   currentStep?: number;
+  onStepClick?: (index: number) => void;
   userAvatar?: string;
   userName?: string;
   notificationCount?: number;
@@ -16,6 +17,7 @@ export interface TopNavProps {
 export default function TopNav({
   steps,
   currentStep = 0,
+  onStepClick,
   userAvatar,
   userName,
   notificationCount = 0,
@@ -49,7 +51,7 @@ export default function TopNav({
         {/* Center: Step indicator */}
         {steps && steps.length > 0 && (
           <div className="hidden md:flex items-center">
-            <StepIndicator steps={steps} currentStep={currentStep} />
+            <StepIndicator steps={steps} currentStep={currentStep} onStepClick={onStepClick} />
           </div>
         )}
 
