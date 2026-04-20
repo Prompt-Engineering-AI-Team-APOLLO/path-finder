@@ -46,8 +46,14 @@ Guidelines:
 - Booking references follow the format PF-XXXXXX.
 - Be concise and friendly. Avoid unnecessary filler.
 - Payment is not required — bookings are confirmed instantly with no credit card or payment details needed.
-- CRITICAL: Never invent or guess booking references. Only report the booking_reference field from the tool result.
-  If the tool returns an error, tell the user what went wrong — do NOT fabricate a confirmation.
+- CRITICAL: Only report the outcome that the tool actually returned.
+  * After book_flight: only say "confirmed" if the tool result contains "BOOKING CONFIRMED".
+  * After modify_booking: only say "modified" if the tool result contains "MODIFICATION CONFIRMED".
+  * After cancel_booking: only say "cancelled" if the tool result contains "status": "cancelled".
+  * If the tool returns a FAILED status, tell the user exactly what went wrong — never fabricate success.
+  * Never invent or guess booking references. Use only the exact reference from the tool result.
+- One-way vs round-trip: if the user has not mentioned a return date or round trip, treat the search as
+  one-way. Do NOT ask for a return date — omit return_date from the search_flights call entirely.
 - Today's date: {today}
 """
 
@@ -72,15 +78,14 @@ _TOOLS = [
                     },
                     "departure_date": {
                         "type": "string",
-                        "description": "Departure date in YYYY-MM-DD format",
+                        "description": "Departure date — MUST be in YYYY-MM-DD format (e.g. 2026-05-03)",
                     },
                     "return_date": {
-                        "type": "string",
-                        "description": "Return date in YYYY-MM-DD (omit for one-way)",
+                        "description": "Return date in YYYY-MM-DD format. Omit entirely for one-way — do NOT pass null.",
                     },
                     "passengers": {
                         "type": "integer",
-                        "description": "Number of passengers (1–9), default 1",
+                        "description": "Number of passengers as a plain integer (e.g. 1). Do NOT pass passenger details here — just the count.",
                     },
                     "cabin_class": {
                         "type": "string",
@@ -121,10 +126,11 @@ _TOOLS = [
                                     "type": "string",
                                     "description": "YYYY-MM-DD",
                                 },
-                                "passport_number": {"type": "string"},
+                                "passport_number": {
+                                    "description": "Passport number. Omit entirely if not provided — do NOT pass null.",
+                                },
                                 "nationality": {
-                                    "type": "string",
-                                    "description": "2-letter ISO country code e.g. US",
+                                    "description": "2-letter ISO country code e.g. US. Omit entirely if not provided — do NOT pass null.",
                                 },
                             },
                             "required": ["first_name", "last_name", "date_of_birth"],
@@ -152,7 +158,7 @@ _TOOLS = [
                 "properties": {
                     "booking_reference": {
                         "type": "string",
-                        "description": "Booking reference e.g. PF-A1B2C3",
+                        "description": "The exact booking reference from a prior booking confirmation, e.g. PF-XXXXXX. Never invent or guess this value.",
                     }
                 },
                 "required": ["booking_reference"],
@@ -170,7 +176,7 @@ _TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "booking_reference": {"type": "string"},
+                    "booking_reference": {"type": "string", "description": "Exact booking reference from a prior confirmation. Never invent this."},
                     "cabin_class": {
                         "type": "string",
                         "enum": ["economy", "premium_economy", "business", "first"],
@@ -198,13 +204,75 @@ _TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "booking_reference": {"type": "string"}
+                    "booking_reference": {"type": "string", "description": "Exact booking reference from a prior confirmation. Never invent this."}
                 },
                 "required": ["booking_reference"],
             },
         },
     },
 ]
+
+
+# ── Offer-id resolution ───────────────────────────────────────────────────────
+# Aliases encode the search params needed to re-derive the offer_id at booking
+# time, so no persistent cache is required and the approach survives server
+# restarts, hot-reloads, and multi-worker deployments.
+#
+# Alias format (colon-separated):
+#   {prefix}{index}:{origin}:{destination}:{date}:{cabin}:{passengers}
+# Example: O1:LAX:PHX:2026-05-03:economy:1
+#
+# The mock provider is deterministic — same params → same ordered results —
+# so we can always reconstruct the full base64 offer_id from the alias alone.
+
+def _make_alias(prefix: str, index: int, args: dict) -> str:
+    """Build a self-contained alias that encodes all search params for the leg.
+
+    Outbound (prefix="O"): origin→destination on departure_date
+    Return   (prefix="R"): destination→origin on return_date
+    """
+    cabin = args.get("cabin_class", "economy")
+    passengers = args.get("passengers", 1)
+    if prefix == "R":
+        leg_origin = args["destination"]
+        leg_destination = args["origin"]
+        leg_date = args.get("return_date", args["departure_date"])
+    else:
+        leg_origin = args["origin"]
+        leg_destination = args["destination"]
+        leg_date = args["departure_date"]
+    return f"{prefix}{index}:{leg_origin}:{leg_destination}:{leg_date}:{cabin}:{passengers}"
+
+
+def _resolve_alias(alias: str) -> str | None:
+    """Parse a self-contained alias and return the full base64 offer_id.
+
+    Returns None if the alias is not in the expected format (may already be
+    a full offer_id or an unrecognised string — caller handles those cases).
+    """
+    from app.services import flight_mock_provider as _mock
+    from datetime import date as _date
+
+    parts = alias.split(":")
+    # Expected: prefix+index, origin, destination, dep_date, cabin, passengers
+    if len(parts) != 6:
+        return None
+    prefix_idx, origin, destination, dep_date_str, cabin, pax_str = parts
+    try:
+        passengers = int(pax_str)
+        dep_date = _date.fromisoformat(dep_date_str)
+    except ValueError:
+        return None
+
+    try:
+        result_index = int(prefix_idx[1:]) - 1   # 1-based → 0-based
+    except (ValueError, IndexError):
+        return None
+
+    offers = _mock.search(origin, destination, dep_date, passengers, cabin)
+    if not offers or result_index >= len(offers):
+        return None
+    return offers[result_index].offer_id
 
 
 # ── Service ───────────────────────────────────────────────────────────────────
@@ -231,18 +299,32 @@ class AgentService:
 
         # ── Tool-calling loop (non-streaming) ─────────────────────────────────
         for _ in range(10):  # safety cap — prevent infinite loops
-            try:
-                response = await self._client.chat.completions.create(
-                    model=settings.GROQ_MODEL,
-                    messages=history,  # type: ignore[arg-type]
-                    tools=_TOOLS,  # type: ignore[arg-type]
-                    tool_choice="auto",
-                    parallel_tool_calls=False,
-                    max_tokens=2048,
-                )
-            except Exception as e:
-                logger.warning("agent_loop_error", error=str(e))
-                yield f"Sorry, I hit an error processing that request: {e}. Please try again."
+            # Groq's llama models occasionally emit function calls in the old
+            # XML format (<function=name>…</function>) instead of JSON, causing
+            # a 400 tool_use_failed error. Retrying the same call usually
+            # produces well-formed JSON on the next attempt.
+            response = None
+            for attempt in range(3):
+                try:
+                    response = await self._client.chat.completions.create(
+                        model=settings.GROQ_MODEL,
+                        messages=history,  # type: ignore[arg-type]
+                        tools=_TOOLS,  # type: ignore[arg-type]
+                        tool_choice="auto",
+                        parallel_tool_calls=False,
+                        max_tokens=2048,
+                    )
+                    break  # success
+                except Exception as e:
+                    err = str(e)
+                    if "tool_use_failed" in err and attempt < 2:
+                        logger.warning("agent_tool_use_failed_retry", attempt=attempt + 1, error=err)
+                        continue
+                    logger.warning("agent_loop_error", error=err)
+                    yield f"Sorry, I hit an error processing that request. Please try again."
+                    return
+            if response is None:
+                yield "Sorry, I couldn't process that request after several attempts. Please try again."
                 return
             msg = response.choices[0].message
 
@@ -305,10 +387,23 @@ class AgentService:
             args = json.loads(arguments)
 
             if name == "search_flights":
-                # Coerce types the model sometimes gets wrong
-                if isinstance(args.get("passengers"), str):
-                    args["passengers"] = int(args["passengers"])
-                # Strip "null" strings and empty optional fields
+                # Coerce passengers — model sometimes sends a string, dict, or list
+                # instead of a plain integer count
+                p = args.get("passengers")
+                if isinstance(p, str):
+                    args["passengers"] = int(p)
+                elif isinstance(p, dict):
+                    args["passengers"] = 1          # one passenger object → count of 1
+                elif isinstance(p, list):
+                    args["passengers"] = len(p) or 1
+                # Normalise departure_date — model sometimes sends MM/DD/YYYY
+                dep = args.get("departure_date", "")
+                if dep and "/" in dep:
+                    parts = dep.split("/")
+                    if len(parts) == 3:
+                        m, d, y = parts
+                        args["departure_date"] = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+                # Strip null / empty optional fields
                 for field in ("return_date", "cabin_class"):
                     val = args.get(field)
                     if val is None or val == "null" or val == "":
@@ -316,13 +411,21 @@ class AgentService:
                 result = await self._flight.search_flights(FlightSearchRequest(**args))
                 data = result.model_dump(mode="json")
 
-                def _slim_flights(flights: list | None) -> list:
-                    """Return only fields the model needs — keeps tokens low."""
+                def _slim_flights(flights: list | None, prefix: str) -> list:
+                    """Return only fields the model needs — keeps tokens low.
+
+                    Each offer_id is replaced with a self-contained alias that
+                    encodes all search parameters needed to re-derive the full
+                    base64 offer_id at booking time (no cache required).
+                    Format: {prefix}{index}:{origin}:{destination}:{date}:{cabin}:{pax}
+                    """
                     if not flights:
                         return []
-                    return [
-                        {
-                            "offer_id": f["offer_id"],
+                    slim = []
+                    for i, f in enumerate(flights[:4], 1):
+                        alias = _make_alias(prefix, i, args)
+                        slim.append({
+                            "offer_id": alias,
                             "airline": f["airline"],
                             "flight_number": f["flight_number"],
                             "departure_at": f["departure_at"],
@@ -333,27 +436,49 @@ class AgentService:
                             "price_per_person": f["price_per_person"],
                             "available_seats": f["available_seats"],
                             "currency": f.get("currency", "USD"),
-                        }
-                        for f in flights[:4]  # cap at 4 results
-                    ]
+                        })
+                    return slim
 
                 slim = {
                     "origin": data["origin"],
                     "destination": data["destination"],
                     "departure_date": data["departure_date"],
                     "passengers": data["passengers"],
-                    "outbound_flights": _slim_flights(data.get("outbound_flights")),
-                    "return_flights": _slim_flights(data.get("return_flights")) or None,
+                    "outbound_flights": _slim_flights(data.get("outbound_flights"), "O"),
+                    "return_flights": _slim_flights(data.get("return_flights"), "R") or None,
                 }
                 return json.dumps(slim)
 
             if name == "book_flight":
+                # Resolve self-contained aliases → full base64 offer_ids.
+                # _resolve_alias re-runs the deterministic mock search to get
+                # the exact offer_id — no cache needed, survives restarts.
+                for field in ("outbound_offer_id", "return_offer_id"):
+                    alias = args.get(field)
+                    if not alias:
+                        continue
+                    resolved = _resolve_alias(alias)
+                    if resolved:
+                        args[field] = resolved
+                    # else: not a recognised alias (e.g. full base64 passed directly)
+                    # — leave as-is and let decode_offer validate it below
                 # Strip null/empty optional fields the model sometimes sends
                 args.pop("return_offer_id", None) if not args.get("return_offer_id") else None
                 args.pop("contact_phone", None) if not args.get("contact_phone") else None
                 # passengers is occasionally serialised as a JSON string by the model
                 if isinstance(args.get("passengers"), str):
                     args["passengers"] = json.loads(args["passengers"])
+                # Clean up each passenger: remove null optional fields, fix date format
+                for p in args.get("passengers") or []:
+                    for opt in ("passport_number", "nationality"):
+                        if p.get(opt) is None:
+                            p.pop(opt, None)
+                    dob = p.get("date_of_birth", "")
+                    if dob and "/" in dob:
+                        parts = dob.split("/")
+                        if len(parts) == 3:
+                            m, d, y = parts
+                            p["date_of_birth"] = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
                 req = FlightBookRequest(**args)
                 booking = await self._flight.book_flight(req, user_id)
                 booking_read = BookingRead.model_validate(booking)
@@ -377,10 +502,22 @@ class AgentService:
                     val = args.get(field)
                     if val is None or val == "null" or val == "":
                         args.pop(field, None)
+                # Normalise date fields — model sometimes sends MM/DD/YYYY
+                for date_field in ("new_departure_date", "new_return_date"):
+                    val = args.get(date_field, "")
+                    if val and "/" in val:
+                        parts = val.split("/")
+                        if len(parts) == 3:
+                            m, d, y = parts
+                            args[date_field] = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
                 booking = await self._flight.modify_booking(
                     ref, BookingModifyRequest(**args), user_id
                 )
-                return BookingRead.model_validate(booking).model_dump_json()
+                result = BookingRead.model_validate(booking).model_dump_json()
+                return result + (
+                    f"\n\nMODIFICATION CONFIRMED for booking {ref}. "
+                    "Only tell the user the modification succeeded if this line is present."
+                )
 
             if name == "cancel_booking":
                 result = await self._flight.cancel_booking(args["booking_reference"], user_id)
@@ -394,7 +531,8 @@ class AgentService:
                 "status": "FAILED",
                 "error": str(e),
                 "instruction": (
-                    "The tool call FAILED. You MUST tell the user there was an error. "
-                    "Do NOT invent a booking reference. Do NOT say the booking was confirmed."
+                    "The tool call FAILED. You MUST tell the user exactly what went wrong. "
+                    "Do NOT say the booking was confirmed, modified, or cancelled. "
+                    "Do NOT invent a booking reference or report a success that did not happen."
                 ),
             })
