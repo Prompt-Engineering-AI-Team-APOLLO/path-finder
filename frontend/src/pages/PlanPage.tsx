@@ -50,6 +50,9 @@ const SmallBedIcon = () => (
   </svg>
 );
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+
+
 const PLAN_STEPS = [
   { number: '01', label: 'Search' },
   { number: '02', label: 'Plan' },
@@ -92,13 +95,64 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
   const [selectedFlight, setSelectedFlight] = useState<string | null>('JP448');
   const [selectedStyle, setSelectedStyle] = useState<string>('Urban Adventure');
 
-  const handleSend = (text: string) => {
-    setMessages(prev => [...prev, {
-      id: String(Date.now()),
-      role: 'user',
-      content: text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    }]);
+  const handleSend = async (text: string) => {
+    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const userMsg: Message = { id: String(Date.now()), role: 'user', content: text, timestamp: ts };
+    const assistantId = String(Date.now() + 1);
+    const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', timestamp: ts };
+
+    const nextMessages = [...messages, userMsg];
+    setMessages([...nextMessages, assistantMsg]);
+    
+    try {
+      const sessionRaw =
+        localStorage.getItem('pathfinder_auth_session') ||
+        sessionStorage.getItem('pathfinder_auth_session');
+      const token = sessionRaw ? JSON.parse(sessionRaw)?.accessToken : null;
+
+      const res = await fetch(`${API_BASE}/agent/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+
+      if (!res.ok || !res.body) {
+        throw new Error(`Request failed: ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const raw = decoder.decode(value, { stream: true });
+        for (const line of raw.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const chunk = line.slice(6);
+          if (chunk === '[DONE]') break;
+          setMessages((prev: Message[]) =>
+            prev.map((m: Message) => m.id === assistantId ? { ...m, content: m.content + chunk } : m)
+          );
+        }
+      }
+    } catch (err) {
+      setMessages((prev: Message[]) =>
+        prev.map((m: Message) =>
+          m.id === assistantId
+            ? { ...m, content: 'Sorry, something went wrong. Please try again.' }
+            : m
+        )
+      );
+    } finally {
+    }
   };
 
   const totalCost = selectedFlight === 'JP448' ? 3210 : selectedFlight === 'JP442' ? 1462 : 0;

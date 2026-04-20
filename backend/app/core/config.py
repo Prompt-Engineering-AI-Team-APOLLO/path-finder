@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = 2048
     OPENAI_TEMPERATURE: float = 0.7
 
+    # ── Groq (agent) ──────────────────────────────────────────────────────────
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+
     # ── Vector DB (Pinecone) ──────────────────────────────────────────────────
     PINECONE_API_KEY: str = ""
     PINECONE_ENVIRONMENT: str = ""
@@ -74,12 +79,11 @@ class Settings(BaseSettings):
     # ── Google OAuth ──────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
 
-    # ── Email ─────────────────────────────────────────────────────────────────
-    SMTP_HOST: str = ""
+    # ── Email (Gmail SMTP) ────────────────────────────────────────────────────
+    SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
-    EMAILS_FROM: str = "noreply@pathfinder.ai"
+    SMTP_USER: str = ""       # Gmail address e.g. pathfinderai07@gmail.com
+    SMTP_PASSWORD: str = ""   # Gmail App Password (16 chars, no spaces)
 
     @model_validator(mode="after")
     def _validate_production_secrets(self) -> "Settings":
