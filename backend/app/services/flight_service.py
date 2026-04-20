@@ -26,6 +26,9 @@ from app.schemas.flight import (
     FlightSearchResponse,
 )
 from app.services import flight_mock_provider as mock
+from app.services.email_service import EmailService
+
+_email = EmailService()
 
 
 class FlightService:
@@ -161,6 +164,7 @@ class FlightService:
         )
         booking = await self._repo.create(booking)
         await self._session.commit()
+        await _email.send_booking_notification(booking, "confirmed")
         return booking
 
     # ── Lookup ────────────────────────────────────────────────────────────────
@@ -300,6 +304,7 @@ class FlightService:
         updates["status"] = "modified"
         result = await self._repo.update(booking, updates)
         await self._session.commit()
+        await _email.send_booking_notification(result, "modified")
         return result
 
     # ── Cancel ────────────────────────────────────────────────────────────────
@@ -311,6 +316,7 @@ class FlightService:
         booking = await self._require_owned_active_booking(reference, user_id)
         await self._repo.update(booking, {"status": "cancelled"})
         await self._session.commit()
+        await _email.send_booking_notification(booking, "cancelled")
         return BookingCancelResponse(
             booking_reference=reference,
             status="cancelled",
