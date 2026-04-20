@@ -741,6 +741,139 @@ async def test_cancel_other_users_booking_returns_403(client: AsyncClient):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Scenario: search LAX→PHX one-way 2026-05-03, book option 2 for John Smith
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_search_lax_phx_and_book_option2_john_smith(
+    client: AsyncClient, db_session
+):
+    """
+    End-to-end integration test for a specific booking scenario.
+
+    Steps
+    -----
+    1. Search one-way LAX → PHX economy for 1 passenger on 2026-05-03.
+       Assert at least 2 offers are returned and inspect their shape.
+    2. Book option 2 (index 1) for passenger John Smith, DOB 1986-09-02,
+       passport AA123456, contact email pathfinderai07@gmail.com.
+    3. Assert HTTP 201 and confirm all booking fields match the request.
+    4. Verify the booking reference is persisted in the database by querying
+       the DB directly via BookingRepository.
+    """
+    from app.repositories.booking import BookingRepository
+
+    # ── 1. Register & authenticate ────────────────────────────────────────────
+    user = {"email": "johnsmith@example.com", "full_name": "John Smith", "password": "Secure123"}
+    token = await _register_and_login(client, user)
+    headers = _auth(token)
+
+    # ── 2. Search LAX → PHX one-way on 2026-05-03 ────────────────────────────
+    search_resp = await client.post(
+        "/api/v1/flights/search",
+        json={
+            "origin": "LAX",
+            "destination": "PHX",
+            "departure_date": "2026-05-03",
+            "passengers": 1,
+            "cabin_class": "economy",
+        },
+    )
+    assert search_resp.status_code == 200, search_resp.text
+    search_body = search_resp.json()
+
+    assert search_body["origin"] == "LAX"
+    assert search_body["destination"] == "PHX"
+    assert search_body["departure_date"] == "2026-05-03"
+    assert search_body["return_flights"] is None, "Expected one-way search (no return flights)"
+
+    outbound_flights = search_body["outbound_flights"]
+    assert len(outbound_flights) >= 2, (
+        f"Expected at least 2 outbound offers, got {len(outbound_flights)}"
+    )
+
+    # Inspect every returned offer for required fields
+    for offer in outbound_flights:
+        assert offer["offer_id"], "offer_id must be non-empty"
+        assert offer["flight_number"]
+        assert offer["airline"]
+        assert offer["departure_at"] < offer["arrival_at"]
+        assert offer["total_price"] > 0
+        assert offer["currency"] == "USD"
+
+    # Pick option 2 (index 1)
+    option2 = outbound_flights[1]
+    offer_id = option2["offer_id"]
+
+    # ── 3. Book option 2 for John Smith ──────────────────────────────────────
+    book_resp = await client.post(
+        "/api/v1/flights/bookings",
+        json={
+            "outbound_offer_id": offer_id,
+            "passengers": [
+                {
+                    "first_name": "John",
+                    "last_name": "Smith",
+                    "date_of_birth": "1986-09-02",   # DOB 09/02/1986 → YYYY-MM-DD
+                    "passport_number": "AA123456",
+                }
+            ],
+            "contact_email": "pathfinderai07@gmail.com",
+        },
+        headers=headers,
+    )
+    assert book_resp.status_code == 201, book_resp.text
+    booking = book_resp.json()
+
+    # ── 4. Assert booking response fields ─────────────────────────────────────
+    ref = booking["booking_reference"]
+    assert ref.startswith("PF-"), f"Expected PF- prefix, got {ref!r}"
+    assert booking["status"] == "confirmed"
+    assert booking["outbound_origin"] == "LAX"
+    assert booking["outbound_destination"] == "PHX"
+    assert booking["return_flight_number"] is None, "Should be one-way — no return flight"
+    assert booking["cabin_class"] == "economy"
+    assert booking["passenger_count"] == 1
+    assert booking["total_price"] > 0
+    assert booking["currency"] == "USD"
+    assert booking["contact_email"] == "pathfinderai07@gmail.com"
+
+    # Passenger details
+    pax = booking["passengers"]
+    assert len(pax) == 1
+    assert pax[0]["first_name"] == "John"
+    assert pax[0]["last_name"] == "Smith"
+    assert pax[0]["date_of_birth"] == "1986-09-02"
+    assert pax[0]["passport_number"] == "AA123456"
+
+    # Flight date must match the searched departure date
+    assert booking["outbound_departure_at"].startswith("2026-05-03"), (
+        f"Departure date mismatch: {booking['outbound_departure_at']}"
+    )
+
+    # ── 5. Verify booking reference is persisted in the database ──────────────
+    repo = BookingRepository(db_session)
+    db_booking = await repo.get_by_reference(ref)
+
+    assert db_booking is not None, (
+        f"Booking {ref!r} was not found in the database after creation"
+    )
+    assert db_booking.booking_reference == ref
+    assert db_booking.status == "confirmed"
+    assert db_booking.outbound_origin == "LAX"
+    assert db_booking.outbound_destination == "PHX"
+    assert db_booking.passenger_count == 1
+    assert db_booking.contact_email == "pathfinderai07@gmail.com"
+
+    stored_pax = db_booking.passengers
+    assert isinstance(stored_pax, list) and len(stored_pax) == 1
+    assert stored_pax[0]["first_name"] == "John"
+    assert stored_pax[0]["last_name"] == "Smith"
+    assert stored_pax[0]["passport_number"] == "AA123456"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # End-to-end journey: search → book → modify → lookup → cancel
 # ═══════════════════════════════════════════════════════════════════════════════
 

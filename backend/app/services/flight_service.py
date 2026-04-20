@@ -26,10 +26,14 @@ from app.schemas.flight import (
     FlightSearchResponse,
 )
 from app.services import flight_mock_provider as mock
+from app.services.email_service import EmailService
+
+_email = EmailService()
 
 
 class FlightService:
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session
         self._repo = BookingRepository(session)
 
     # ── Search ────────────────────────────────────────────────────────────────
@@ -158,7 +162,10 @@ class FlightService:
             contact_email=req.contact_email,
             contact_phone=req.contact_phone,
         )
-        return await self._repo.create(booking)
+        booking = await self._repo.create(booking)
+        await self._session.commit()
+        await _email.send_booking_notification(booking, "confirmed")
+        return booking
 
     # ── Lookup ────────────────────────────────────────────────────────────────
 
@@ -295,7 +302,10 @@ class FlightService:
             )
 
         updates["status"] = "modified"
-        return await self._repo.update(booking, updates)
+        result = await self._repo.update(booking, updates)
+        await self._session.commit()
+        await _email.send_booking_notification(result, "modified")
+        return result
 
     # ── Cancel ────────────────────────────────────────────────────────────────
 
@@ -305,6 +315,8 @@ class FlightService:
         """Cancel an active booking owned by the requesting user."""
         booking = await self._require_owned_active_booking(reference, user_id)
         await self._repo.update(booking, {"status": "cancelled"})
+        await self._session.commit()
+        await _email.send_booking_notification(booking, "cancelled")
         return BookingCancelResponse(
             booking_reference=reference,
             status="cancelled",

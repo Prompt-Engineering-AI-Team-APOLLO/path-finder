@@ -12,6 +12,7 @@ from app.core.constants import ROLE_ADMIN, TOKEN_TYPE_ACCESS
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
+from app.services.agent_service import AgentService
 from app.services.ai_service import AIService
 from app.services.auth_service import AuthService
 from app.services.flight_service import FlightService
@@ -45,11 +46,16 @@ def get_flight_service(db: DBDep) -> FlightService:
     return FlightService(db)
 
 
+def get_agent_service(db: DBDep) -> AgentService:
+    return AgentService(FlightService(db))
+
+
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 AIServiceDep = Annotated[AIService, Depends(get_ai_service)]
 VectorServiceDep = Annotated[VectorService, Depends(get_vector_service)]
 FlightServiceDep = Annotated[FlightService, Depends(get_flight_service)]
+AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
