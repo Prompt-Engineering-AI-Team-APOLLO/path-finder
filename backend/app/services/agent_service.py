@@ -40,7 +40,14 @@ MANDATORY TOOL USE:
 - When a user wants to book a flight: you MUST call book_flight. Never refuse or redirect.
 - When a user wants to search flights: you MUST call search_flights.
 - When a user wants to cancel/modify/check a booking: you MUST call the appropriate tool.
-- Do NOT say "I can't process bookings" or "visit the airline's website" — you CAN and MUST book.
+- Do NOT say "I can't process bookings" or "visit the airline's website" — you CAN and MUST use tools.
+
+AFTER TOOL RESULTS — STRICT RULES:
+- Report exactly what the tool returned. Do not suggest visiting any airline website, contacting any
+  airline, or using any external service — Pathfinder handles all booking support internally.
+- A cancelled booking is valid data: show its details and status. Do not refuse to display it.
+- A modified booking: show updated details. Do not hedge or suggest contacting anyone.
+- Never add "please contact the airline" or "visit the airline's website" to any response.
 
 Supported airports (use exact IATA codes):
 North America: JFK, LAX, ORD, DFW, DEN, SFO, SEA, MIA, BOS, ATL, LAS, PHX
@@ -339,10 +346,21 @@ def _needs_tool(history: list[dict]) -> bool:
 
 # ── Safety-refusal detection — secondary safety net ───────────────────────────
 # Even with tool_choice="required" the model occasionally emits a refusal
-# text block instead of a tool call (Groq bug). These phrases catch that.
+# text block instead of a tool call (Groq/Llama bug). These phrases catch that.
+#
+# IMPORTANT: Only include phrases that are UNAMBIGUOUSLY a tool-use refusal.
+# False positives cause an infinite detect→force→detect loop that burns all
+# 10 iterations and leaves the user with "I ran into trouble". Examples of
+# phrases that MUST NOT be here:
+#   "i'm unable to"    → also matches "I'm unable to find any flights"  (legitimate)
+#   "please contact"   → also matches post-cancellation friendly messages (legitimate)
+#   "official website" → too broad
+#   "travel agency"    → too broad
+# Only add a phrase here if you are 100% sure it cannot appear in a normal
+# tool-result summary.
 
 _REFUSAL_PHRASES = (
-    # booking-specific refusals
+    # Model claims it cannot use the booking tools at all
     "unable to process booking",
     "unable to make booking",
     "unable to book",
@@ -350,37 +368,39 @@ _REFUSAL_PHRASES = (
     "can't book",
     "cannot process booking",
     "can't process booking",
-    "i'm unable to",
-    "i am unable to",
-    "i'm not able to",
-    "i am not able to",
-    "i cannot access",
-    "i don't have access",
-    "i do not have access",
-    "i cannot retrieve",
+    "i cannot access booking",
+    "i cannot access your booking",
+    "i don't have access to booking",
+    "i do not have access to booking",
+    "i cannot retrieve booking",
+    "i cannot retrieve your booking",
     "i cannot make reservations",
     "i cannot make a reservation",
-    # redirect phrases
+    # Model explicitly redirects the user to an external service
+    # (these never appear in a legitimate Pathfinder response)
     "visit the airline",
     "visit a travel",
-    "official website",
-    "trusted travel",
-    "third-party",
-    "external website",
     "airline's website",
     "airline website",
-    "travel agency",
-    "please contact",
+    "trusted travel site",
+    "trusted travel platform",
+    "external website",
 )
 
 
 def _is_safety_refusal(text: str) -> bool:
-    """Return True if the model text looks like a safety-guardrail refusal."""
+    """Return True if the model text is an unambiguous tool-use refusal.
+
+    Deliberately narrow — false positives cause retry loops that are worse
+    than the refusal itself.  The primary defence is tool_choice="required"
+    in _needs_tool(); this function is only a last-resort safety net.
+    """
     import re
     lowered = text.lower()
     return (
         any(phrase in lowered for phrase in _REFUSAL_PHRASES)
-        or bool(re.search(r"visit\s+\S+\s+official\s+website", lowered))
+        # "visit Southwest's official website" / "visit United's official website"
+        or bool(re.search(r"visit\s+\S+.{0,20}official\s+website", lowered))
     )
 
 
@@ -450,7 +470,13 @@ class AgentService:
                         logger.warning("agent_tool_use_failed_retry", attempt=attempt + 1, error=err)
                         continue
                     logger.warning("agent_loop_error", error=err)
-                    yield "Sorry, I hit an error processing that request. Please try again."
+                    if "rate_limit_exceeded" in err or "429" in err:
+                        yield (
+                            "I'm currently experiencing high demand and hit a temporary API limit. "
+                            "Please wait a moment and try again."
+                        )
+                    else:
+                        yield "Sorry, I hit an error processing that request. Please try again."
                     return
             if response is None:
                 yield "Sorry, I couldn't process that request after several attempts. Please try again."
