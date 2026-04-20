@@ -52,15 +52,6 @@ const SmallBedIcon = () => (
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
-/* ── Initial greeting ── */
-const AI_MESSAGES: Message[] = [
-  {
-    id: '1',
-    role: 'assistant',
-    content: "Hi! I'm your AI travel assistant. Tell me where you'd like to fly and I'll search for options and help you book.",
-    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  },
-];
 
 const PLAN_STEPS = [
   { number: '01', label: 'Search' },
@@ -103,7 +94,6 @@ interface PlanPageProps {
 export default function PlanPage({ userEmail, onNavigate, messages, setMessages, onClearChat }: PlanPageProps) {
   const [selectedFlight, setSelectedFlight] = useState<string | null>('JP448');
   const [selectedStyle, setSelectedStyle] = useState<string>('Urban Adventure');
-  const [messages, setMessages] = useState<Message[]>(AI_MESSAGES);
 
   const handleSend = async (text: string) => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
