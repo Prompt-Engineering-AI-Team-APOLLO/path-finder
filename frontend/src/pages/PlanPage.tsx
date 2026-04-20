@@ -63,7 +63,7 @@ const AI_MESSAGES: Message[] = [
 ];
 
 const PLAN_STEPS = [
-  { number: '01', label: 'Welcome' },
+  { number: '01', label: 'Search' },
   { number: '02', label: 'Plan' },
   { number: '03', label: 'Confirm' },
 ];
@@ -92,7 +92,15 @@ function NoHotelSlot() {
 /* ─────────────────────────────────────────────
    PlanPage
 ───────────────────────────────────────────── */
-export default function PlanPage() {
+interface PlanPageProps {
+  userEmail?: string;
+  onNavigate?: (page: string) => void;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  onClearChat?: () => void;
+}
+
+export default function PlanPage({ userEmail, onNavigate, messages, setMessages, onClearChat }: PlanPageProps) {
   const [selectedFlight, setSelectedFlight] = useState<string | null>('JP448');
   const [selectedStyle, setSelectedStyle] = useState<string>('Urban Adventure');
   const [messages, setMessages] = useState<Message[]>(AI_MESSAGES);
@@ -164,11 +172,13 @@ export default function PlanPage() {
     <CompanionPanel
       messages={messages}
       onSendMessage={handleSend}
-      assistantName="AI Companion"
+      onClearChat={onClearChat}
+      assistantName="Pathfinder AI"
+      assistantSubtitle="Your Travel Curator"
       isOnline={true}
       inputPlaceholder="Ask your companion..."
       quickActions={[
-        { icon: <SmallPlaneIcon />, label: 'Optimize flights' },
+        { icon: <SmallPlaneIcon />, label: 'Search flights', onClick: () => onNavigate?.('home') },
         { icon: <SmallBedIcon />, label: 'Suggest 5-star hotels' },
       ]}
     />
@@ -241,8 +251,12 @@ export default function PlanPage() {
       <TopNav
         steps={PLAN_STEPS}
         currentStep={1}
-        userName="Alex Morgan"
-        notificationCount={2}
+        userName={userEmail}
+        notificationCount={0}
+        onStepClick={(i) => {
+          const pages = ['home', 'plan', 'confirm'];
+          if (pages[i] && pages[i] !== 'plan') onNavigate?.(pages[i]);
+        }}
       />
       <PageLayout
         leftPanel={leftPanel}

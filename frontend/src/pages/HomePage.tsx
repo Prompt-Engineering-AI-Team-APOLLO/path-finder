@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Badge,
   StepIndicator,
@@ -54,12 +54,6 @@ CONVERSATION FLOW:
 3. Assume 1 passenger and economy unless stated otherwise.
 4. After flight results are shown, briefly highlight the best 1-2 options and ask which they'd like to book.`;
 
-const WELCOME_MESSAGE: Message = {
-  id: 'welcome',
-  role: 'assistant',
-  content: "Hi! I'm your AI travel curator. Tell me where you'd like to go and I'll plan the perfect trip — flights, activities, dining, and more. Where shall we begin?",
-  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-};
 
 /* ── Flight detail modal ── */
 function FlightDetailModal({ flight, onClose }: { flight: FlightOffer; onClose: () => void }) {
@@ -256,18 +250,29 @@ interface HomePageProps {
   accessToken?: string;
   onOpenProfile?: () => void;
   onSignOut?: () => void;
+  onContinueToBooking?: (flight: FlightOffer, passengerCount: number) => void;
+  onNavigate?: (page: string) => void;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  onClearChat?: () => void;
+  // Flight search state — lifted to App so it survives navigation
+  flightResults: FlightOffer[] | null;
+  setFlightResults: React.Dispatch<React.SetStateAction<FlightOffer[] | null>>;
+  rawFlightResults: FlightOffer[] | null;
+  setRawFlightResults: React.Dispatch<React.SetStateAction<FlightOffer[] | null>>;
+  showFlightResults: boolean;
+  setShowFlightResults: React.Dispatch<React.SetStateAction<boolean>>;
+  selectedFlightId: string | null;
+  setSelectedFlightId: React.Dispatch<React.SetStateAction<string | null>>;
+  flightRoute: { from: string; to: string } | null;
+  setFlightRoute: React.Dispatch<React.SetStateAction<{ from: string; to: string } | null>>;
+  passengerCount: number;
+  setPassengerCount: React.Dispatch<React.SetStateAction<number>>;
 }
 
-export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut }: HomePageProps) {
-  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onContinueToBooking, onNavigate, messages, setMessages, onClearChat, flightResults, setFlightResults, rawFlightResults, setRawFlightResults, showFlightResults, setShowFlightResults, selectedFlightId, setSelectedFlightId, flightRoute, setFlightRoute, passengerCount, setPassengerCount }: HomePageProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  // rawFlightResults = full API results; flightResults = currently displayed (may be filtered)
-  const [rawFlightResults, setRawFlightResults] = useState<FlightOffer[] | null>(null);
-  const [flightResults, setFlightResults] = useState<FlightOffer[] | null>(null);
-  const [showFlightResults, setShowFlightResults] = useState(false);
-  const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
-  const [flightRoute, setFlightRoute] = useState<{ from: string; to: string } | null>(null);
   const [detailFlight, setDetailFlight] = useState<FlightOffer | null>(null);
   const conversationId = useRef<string>(crypto.randomUUID());
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -451,6 +456,7 @@ Other rules:
           setShowFlightResults(true);
           setSelectedFlightId(null);
           setFlightRoute({ from: params.origin, to: params.destination });
+          setPassengerCount(params.passengers ?? 1);
         }
       } else if (params && hasFilterParams(params) && rawFlightResults) {
         // Filter existing results (always against the raw set so filters don't compound destructively)
@@ -616,7 +622,14 @@ Other rules:
             )}
           </div>
 
-          <StepIndicator steps={STEPS} currentStep={0} />
+          <StepIndicator
+            steps={STEPS}
+            currentStep={0}
+            onStepClick={(i) => {
+              const pages = ['home', 'plan', 'confirm'];
+              if (pages[i] && pages[i] !== 'home') onNavigate?.(pages[i]);
+            }}
+          />
         </div>
       </div>
 
@@ -647,6 +660,7 @@ Other rules:
           <CompanionPanel
             messages={messages}
             onSendMessage={handleSend}
+            onClearChat={onClearChat}
             assistantName="Pathfinder"
             assistantSubtitle="AI-Powered Travel Curation"
             headerIcon={<SparkleIcon />}
@@ -756,8 +770,16 @@ Other rules:
 
               {/* Book button */}
               {selectedFlightId && (
-                <Button variant="primary" size="lg" fullWidth>
-                  Continue to Booking
+                <Button
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  onClick={() => {
+                    const flight = flightResults?.find(f => f.offer_id === selectedFlightId);
+                    if (flight && onContinueToBooking) onContinueToBooking(flight, passengerCount);
+                  }}
+                >
+                  Continue to Booking →
                 </Button>
               )}
             </div>
