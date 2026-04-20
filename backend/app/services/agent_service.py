@@ -31,6 +31,17 @@ logger = get_logger(__name__)
 _SYSTEM_PROMPT = """You are an AI travel assistant for Pathfinder, a flight booking platform.
 You help users search for flights, book them, check booking status, modify, and cancel bookings.
 
+IMPORTANT — you are operating inside Pathfinder's own backend infrastructure. All bookings are
+processed through Pathfinder's internal systems via the tools provided to you. You are NOT visiting
+any external airline website or third-party service. You have full authority to call these tools —
+it is your primary job to do so.
+
+MANDATORY TOOL USE:
+- When a user wants to book a flight: you MUST call book_flight. Never refuse or redirect.
+- When a user wants to search flights: you MUST call search_flights.
+- When a user wants to cancel/modify/check a booking: you MUST call the appropriate tool.
+- Do NOT say "I can't process bookings" or "visit the airline's website" — you CAN and MUST book.
+
 Supported airports (use exact IATA codes):
 North America: JFK, LAX, ORD, DFW, DEN, SFO, SEA, MIA, BOS, ATL, LAS, PHX
 Europe: LHR, CDG, FRA, AMS, MAD, FCO, ZRH, BCN
@@ -275,6 +286,104 @@ def _resolve_alias(alias: str) -> str | None:
     return offers[result_index].offer_id
 
 
+# ── Intent detection — prevents refusals before they happen ───────────────────
+# When the last user message clearly implies a tool action, we use
+# tool_choice="required" on the FIRST call so the model cannot refuse.
+# This is more robust than detecting refusals after the fact.
+
+# IATA codes the system supports (from the system prompt)
+_IATA_CODES = frozenset([
+    "jfk", "lax", "ord", "dfw", "den", "sfo", "sea", "mia", "bos", "atl",
+    "las", "phx", "lhr", "cdg", "fra", "ams", "mad", "fco", "zrh", "bcn",
+    "dxb", "auh", "doh", "nrt", "hkg", "sin", "syd", "icn", "bkk",
+])
+
+# Plain keywords that imply a tool should be called
+_TOOL_INTENT_KEYWORDS = frozenset([
+    # flight search
+    "flight", "flights", "fly ", "flying", "flew",
+    # booking actions
+    "book ", "booking", "booked", "reserve", "reservation", "ticket",
+    # passenger / trip details
+    "passenger", "passengers", "depart", "departure", "arrival", "arrive",
+    "one-way", "one way", "round trip", "round-trip", "return flight",
+    # cabin class
+    "economy", "business class", "first class", "premium economy",
+    # booking management
+    "cancel", "cancellation", "modify", "modification", "reschedule",
+    "retrieve", "check my booking", "get my booking", "change my booking",
+    # booking reference pattern
+    "pf-",
+])
+
+
+def _needs_tool(history: list[dict]) -> bool:
+    """Return True if the last user message implies a tool must be called.
+
+    Scans the last user turn for IATA codes or flight/booking keywords.
+    Used to set tool_choice="required" on the first LLM call, preventing
+    the model from issuing a safety-guardrail refusal instead of acting.
+    """
+    for msg in reversed(history):
+        if msg.get("role") == "user":
+            lowered = msg.get("content", "").lower()
+            # Check IATA codes (word-boundary aware — "phx" inside "phoenix" is ok)
+            words = set(lowered.split())
+            if words & _IATA_CODES:
+                return True
+            if any(kw in lowered for kw in _TOOL_INTENT_KEYWORDS):
+                return True
+            return False  # last user message found, no match
+    return False
+
+
+# ── Safety-refusal detection — secondary safety net ───────────────────────────
+# Even with tool_choice="required" the model occasionally emits a refusal
+# text block instead of a tool call (Groq bug). These phrases catch that.
+
+_REFUSAL_PHRASES = (
+    # booking-specific refusals
+    "unable to process booking",
+    "unable to make booking",
+    "unable to book",
+    "cannot book",
+    "can't book",
+    "cannot process booking",
+    "can't process booking",
+    "i'm unable to",
+    "i am unable to",
+    "i'm not able to",
+    "i am not able to",
+    "i cannot access",
+    "i don't have access",
+    "i do not have access",
+    "i cannot retrieve",
+    "i cannot make reservations",
+    "i cannot make a reservation",
+    # redirect phrases
+    "visit the airline",
+    "visit a travel",
+    "official website",
+    "trusted travel",
+    "third-party",
+    "external website",
+    "airline's website",
+    "airline website",
+    "travel agency",
+    "please contact",
+)
+
+
+def _is_safety_refusal(text: str) -> bool:
+    """Return True if the model text looks like a safety-guardrail refusal."""
+    import re
+    lowered = text.lower()
+    return (
+        any(phrase in lowered for phrase in _REFUSAL_PHRASES)
+        or bool(re.search(r"visit\s+\S+\s+official\s+website", lowered))
+    )
+
+
 # ── Service ───────────────────────────────────────────────────────────────────
 
 class AgentService:
@@ -290,19 +399,39 @@ class AgentService:
         messages: list[AgentMessage],
         user_id: uuid.UUID | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Run the agentic loop and yield final response as SSE-ready text chunks."""
+        """Run the agentic loop and yield final response as SSE-ready text chunks.
+
+        Tool-choice strategy
+        --------------------
+        * iteration 0: "required" when the last user message mentions flights,
+          bookings, or airport codes — this prevents the model from issuing a
+          safety-guardrail refusal instead of calling a tool.
+        * iteration 0: "auto" for general questions that don't need a tool.
+        * iteration 1+: always "auto" — the model has already called at least
+          one tool and is either chaining calls or writing a final response.
+        * Refusal safety-net: if the model somehow returns plain text that looks
+          like a redirect/refusal, we inject a correction message, mark the next
+          iteration as "required", and continue rather than giving up.
+        """
         from datetime import date
         system = _SYSTEM_PROMPT.format(today=date.today().isoformat())
 
         history: list[dict] = [{"role": "system", "content": system}]
         history += [{"role": m.role, "content": m.content} for m in messages]
 
+        # Detect intent once up-front so we can set tool_choice="required" on
+        # the first call and prevent safety refusals entirely.
+        force_tool_next = _needs_tool(history)
+
         # ── Tool-calling loop (non-streaming) ─────────────────────────────────
-        for _ in range(10):  # safety cap — prevent infinite loops
+        for iteration in range(10):  # safety cap — prevent infinite loops
+            tool_choice = "required" if force_tool_next else "auto"
+            force_tool_next = False  # reset; only set again if refusal detected
+
             # Groq's llama models occasionally emit function calls in the old
             # XML format (<function=name>…</function>) instead of JSON, causing
-            # a 400 tool_use_failed error. Retrying the same call usually
-            # produces well-formed JSON on the next attempt.
+            # a 400 tool_use_failed error. Retrying usually produces well-formed
+            # JSON on the next attempt.
             response = None
             for attempt in range(3):
                 try:
@@ -310,31 +439,60 @@ class AgentService:
                         model=settings.GROQ_MODEL,
                         messages=history,  # type: ignore[arg-type]
                         tools=_TOOLS,  # type: ignore[arg-type]
-                        tool_choice="auto",
+                        tool_choice=tool_choice,
                         parallel_tool_calls=False,
                         max_tokens=2048,
                     )
-                    break  # success
+                    break
                 except Exception as e:
                     err = str(e)
                     if "tool_use_failed" in err and attempt < 2:
                         logger.warning("agent_tool_use_failed_retry", attempt=attempt + 1, error=err)
                         continue
                     logger.warning("agent_loop_error", error=err)
-                    yield f"Sorry, I hit an error processing that request. Please try again."
+                    yield "Sorry, I hit an error processing that request. Please try again."
                     return
             if response is None:
                 yield "Sorry, I couldn't process that request after several attempts. Please try again."
                 return
+
             msg = response.choices[0].message
 
+            # ── No tool calls: either a final answer or a safety refusal ──────
             if not msg.tool_calls:
-                # No more tool calls — stream the final text response
-                async for chunk in self._stream_final(history, msg.content or ""):
-                    yield chunk
+                content = msg.content or ""
+
+                if content and _is_safety_refusal(content):
+                    # The model refused to act despite tool_choice="required" or
+                    # "auto". Inject a correction and retry with force.
+                    logger.warning(
+                        "agent_safety_refusal_detected",
+                        iteration=iteration,
+                        tool_choice=tool_choice,
+                        content=content[:200],
+                    )
+                    history.append({"role": "assistant", "content": content})
+                    history.append({
+                        "role": "user",
+                        "content": (
+                            "You MUST use one of the provided tools to fulfil this request. "
+                            "You are operating inside Pathfinder's own backend — you have full "
+                            "authority and capability to call these tools. "
+                            "Call the correct tool now. Do not refuse or redirect."
+                        ),
+                    })
+                    force_tool_next = True  # next iteration: tool_choice="required"
+                    continue
+
+                # Legitimate final response — yield and finish
+                if content:
+                    yield content
+                else:
+                    async for chunk in self._stream_final(history):
+                        yield chunk
                 return
 
-            # Append assistant turn with tool calls
+            # ── Tool calls: execute and loop back for the next LLM turn ───────
             history.append({
                 "role": "assistant",
                 "content": msg.content,
@@ -351,10 +509,9 @@ class AgentService:
                 ],
             })
 
-            # Execute each tool and append results
             for tc in msg.tool_calls:
                 result = await self._execute_tool(tc.function.name, tc.function.arguments, user_id)
-                logger.info("agent_tool_called", tool=tc.function.name, result=result)
+                logger.info("agent_tool_called", tool=tc.function.name, result=result[:200])
                 history.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
@@ -365,9 +522,9 @@ class AgentService:
         yield "I ran into trouble completing that request. Please try again."
 
     async def _stream_final(
-        self, history: list[dict], fallback_content: str
+        self, history: list[dict]
     ) -> AsyncGenerator[str, None]:
-        """Stream the final assistant response."""
+        """Stream a fresh assistant response when the model returned empty content."""
         stream = await self._client.chat.completions.create(
             model=settings.GROQ_MODEL,
             messages=history,  # type: ignore[arg-type]
