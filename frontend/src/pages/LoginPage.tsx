@@ -18,7 +18,7 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
 import { Logo, Button, Input, Checkbox, AvatarGroup } from '../components/ui';
 
 type AuthMode = 'signin' | 'signup';
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 interface LoginPageProps {
   onSignInSuccess?: (payload: { email: string; remember: boolean; accessToken: string; refreshToken: string }) => void;
@@ -79,7 +79,7 @@ export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
         refreshToken: data.tokens?.refresh_token ?? '',
       });
     } catch {
-      setErrors({ form: 'Cannot connect to backend. Ensure API is running on port 8000.' });
+      setErrors({ form: 'Cannot connect to backend. Ensure API is running on port 8001.' });
     } finally {
       setLoading(false);
     }
@@ -170,7 +170,7 @@ export default function LoginPage({ onSignInSuccess }: LoginPageProps) {
         });
       }
     } catch {
-      setErrors({ form: 'Cannot connect to backend. Ensure API is running on port 8000.' });
+      setErrors({ form: 'Cannot connect to backend. Ensure API is running on port 8001.' });
     } finally {
       setLoading(false);
     }
