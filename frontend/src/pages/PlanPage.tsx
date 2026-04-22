@@ -50,7 +50,7 @@ const SmallBedIcon = () => (
   </svg>
 );
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 
 const PLAN_STEPS = [
@@ -136,8 +136,10 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
         const raw = decoder.decode(value, { stream: true });
         for (const line of raw.split('\n')) {
           if (!line.startsWith('data: ')) continue;
-          const chunk = line.slice(6);
-          if (chunk === '[DONE]') break;
+          const raw_chunk = line.slice(6);
+          if (raw_chunk === '[DONE]') break;
+          let chunk: string;
+          try { chunk = JSON.parse(raw_chunk); } catch { chunk = raw_chunk; }
           setMessages((prev: Message[]) =>
             prev.map((m: Message) => m.id === assistantId ? { ...m, content: m.content + chunk } : m)
           );

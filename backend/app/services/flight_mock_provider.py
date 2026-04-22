@@ -81,6 +81,8 @@ ROUTES: dict[tuple[str, str], tuple[int, float]] = {
     ("SFO", "SEA"): (130, 110),
     ("DEN", "LAX"): (160, 145),
     ("LAX", "DEN"): (160, 145),
+    ("DFW", "DEN"): (130, 120),
+    ("DEN", "DFW"): (130, 120),
     ("MIA", "BOS"): (195, 155),
     ("BOS", "MIA"): (195, 155),
     ("LAS", "LAX"): (65, 80),

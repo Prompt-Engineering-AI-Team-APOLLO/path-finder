@@ -39,7 +39,7 @@ function formatDuration(minutes: number) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 const SYSTEM_PROMPT = `You are Pathfinder, a premium AI travel curator. Help users plan trips and book flights.
 

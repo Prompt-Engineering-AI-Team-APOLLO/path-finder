@@ -2,6 +2,24 @@ import Avatar from './Avatar';
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 
+function renderMarkdown(text: string): string {
+  return text
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Bullet list lines (- item or * item)
+    .replace(/^[\-\*] (.+)$/gm, '<li>$1</li>')
+    // Wrap consecutive <li> blocks in <ul>
+    .replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul style="margin:6px 0 6px 16px;padding:0;list-style:disc">${m}</ul>`)
+    // Headings
+    .replace(/^### (.+)$/gm, '<strong>$1</strong>')
+    .replace(/^## (.+)$/gm, '<strong>$1</strong>')
+    .replace(/^# (.+)$/gm, '<strong>$1</strong>')
+    // Newlines to <br>
+    .replace(/\n/g, '<br/>');
+}
+
 export interface ChatMessageProps {
   role: MessageRole;
   content: string;
@@ -66,7 +84,9 @@ export default function ChatMessage({
             wordBreak: 'break-word',
           }}
         >
-          {content}
+          {isAssistant
+            ? <span dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+            : content}
         </div>
 
         {timestamp && (
