@@ -14,6 +14,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+.env
 .venv/
 venv/
 env/
