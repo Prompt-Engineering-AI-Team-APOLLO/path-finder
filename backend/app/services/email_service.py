@@ -118,9 +118,7 @@ def _send_smtp(to: str, subject: str, body: str) -> None:
     msg["From"] = settings.SMTP_USER
     msg["To"] = to
 
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
-        smtp.ehlo()
-        smtp.starttls()
+    with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
         smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
         smtp.sendmail(settings.SMTP_USER, [to], msg.as_string())
 
