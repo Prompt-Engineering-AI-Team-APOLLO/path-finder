@@ -420,6 +420,40 @@ def _is_safety_refusal(text: str) -> bool:
     )
 
 
+# ── History management ────────────────────────────────────────────────────────
+
+# ~15K tokens at 4 chars/token — keeps costs bounded while preserving enough
+# context for multi-turn booking flows.
+_MAX_HISTORY_CHARS = 60_000
+
+
+def _trim_history(history: list[dict]) -> list[dict]:
+    """Drop the oldest non-system messages when history exceeds the char limit.
+
+    Always preserves history[0] (system prompt) and trims from the front so
+    the most recent tool results and assistant turns are retained.
+    """
+    total = sum(len(str(m.get("content") or "")) for m in history)
+    if total <= _MAX_HISTORY_CHARS:
+        return history
+
+    system = history[0]
+    rest = list(history[1:])
+    original_count = len(history)
+
+    while rest and total > _MAX_HISTORY_CHARS:
+        dropped = rest.pop(0)
+        total -= len(str(dropped.get("content") or ""))
+
+    logger.warning(
+        "agent_history_trimmed",
+        original_messages=original_count,
+        trimmed_messages=len(rest) + 1,
+        remaining_chars=total,
+    )
+    return [system] + rest
+
+
 # ── Service ───────────────────────────────────────────────────────────────────
 
 class AgentService:
@@ -467,6 +501,8 @@ class AgentService:
         for iteration in range(10):  # safety cap — prevent infinite loops
             tool_choice = "required" if force_tool_next else "auto"
             force_tool_next = False  # reset; only set again if refusal detected
+
+            history = _trim_history(history)
 
             # Groq's llama models occasionally emit function calls in the old
             # XML format (<function=name>…</function>) instead of JSON, causing

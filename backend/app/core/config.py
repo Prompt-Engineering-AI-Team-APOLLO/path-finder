@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: Literal["json", "text"] = "json"
 
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+    # Set to 0 to disable rate limiting entirely (useful in development)
+    AGENT_RATE_LIMIT: int = 15    # requests per minute per user
+    AI_CHAT_RATE_LIMIT: int = 30  # requests per minute per user
+
     # ── Google OAuth ──────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
 
