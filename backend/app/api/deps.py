@@ -3,6 +3,7 @@
 import uuid
 from typing import Annotated
 
+import structlog.contextvars
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
@@ -20,6 +21,7 @@ from app.services.user_service import UserService
 from app.services.vector_service import VectorService
 
 _bearer = HTTPBearer(auto_error=True)
+_optional_bearer = HTTPBearer(auto_error=False)
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 DBDep = Annotated[AsyncSession, Depends(get_db)]
@@ -85,7 +87,31 @@ async def get_current_user(
         raise credentials_exception
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+    structlog.contextvars.bind_contextvars(user_id=str(user.id))
     return user
+
+
+async def get_optional_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_optional_bearer)],
+    user_svc: UserServiceDep,
+) -> User | None:
+    """Like get_current_user but returns None instead of raising when unauthenticated."""
+    if credentials is None:
+        return None
+    try:
+        payload = decode_token(credentials.credentials)
+        if payload.get("type") != TOKEN_TYPE_ACCESS:
+            return None
+        user_id_str: str | None = payload.get("sub")
+        if user_id_str is None:
+            return None
+        user = await user_svc.get_user(uuid.UUID(user_id_str))
+        if not user.is_active:
+            return None
+        structlog.contextvars.bind_contextvars(user_id=str(user.id))
+        return user
+    except Exception:
+        return None
 
 
 def require_role(*roles: str):
@@ -102,4 +128,5 @@ def require_role(*roles: str):
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+OptionalUser = Annotated[User | None, Depends(get_optional_current_user)]
 AdminUser = Annotated[User, Depends(require_role(ROLE_ADMIN))]
