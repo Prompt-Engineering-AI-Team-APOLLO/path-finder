@@ -8,6 +8,7 @@ The loop:
 """
 
 import json
+import time
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -457,6 +458,11 @@ class AgentService:
         # the first call and prevent safety refusals entirely.
         force_tool_next = _needs_tool(history)
 
+        # ── Per-run accumulators for observability ────────────────────────────
+        _total_prompt_tokens = 0
+        _total_completion_tokens = 0
+        _tools_called: list[str] = []
+
         # ── Tool-calling loop (non-streaming) ─────────────────────────────────
         for iteration in range(10):  # safety cap — prevent infinite loops
             tool_choice = "required" if force_tool_next else "auto"
@@ -467,8 +473,10 @@ class AgentService:
             # a 400 tool_use_failed error. Retrying usually produces well-formed
             # JSON on the next attempt.
             response = None
+            _llm_ms = 0.0
             for attempt in range(3):
                 try:
+                    _t0 = time.perf_counter()
                     response = await self._client.chat.completions.create(
                         model=settings.OPENAI_MODEL,
                         messages=history,  # type: ignore[arg-type]
@@ -477,6 +485,7 @@ class AgentService:
                         parallel_tool_calls=False,
                         max_tokens=2048,
                     )
+                    _llm_ms = round((time.perf_counter() - _t0) * 1000, 2)
                     break
                 except Exception as e:
                     err = str(e)
@@ -495,6 +504,22 @@ class AgentService:
             if response is None:
                 yield "Sorry, I couldn't process that request after several attempts. Please try again."
                 return
+
+            _usage = response.usage
+            logger.info(
+                "llm_call",
+                model=response.model,
+                iteration=iteration,
+                tool_choice=tool_choice,
+                prompt_tokens=_usage.prompt_tokens if _usage else None,
+                completion_tokens=_usage.completion_tokens if _usage else None,
+                total_tokens=_usage.total_tokens if _usage else None,
+                finish_reason=response.choices[0].finish_reason,
+                duration_ms=_llm_ms,
+            )
+            if _usage:
+                _total_prompt_tokens += _usage.prompt_tokens
+                _total_completion_tokens += _usage.completion_tokens
 
             msg = response.choices[0].message
 
@@ -549,6 +574,14 @@ class AgentService:
                     continue
 
                 # Legitimate final response — yield and finish
+                logger.info(
+                    "agent_run_complete",
+                    iterations=iteration + 1,
+                    total_prompt_tokens=_total_prompt_tokens,
+                    total_completion_tokens=_total_completion_tokens,
+                    total_tokens=_total_prompt_tokens + _total_completion_tokens,
+                    tools_called=_tools_called,
+                )
                 if content:
                     yield content
                 else:
@@ -575,6 +608,7 @@ class AgentService:
 
             for tc in msg.tool_calls:
                 result = await self._execute_tool(tc.function.name, tc.function.arguments, user_id)
+                _tools_called.append(tc.function.name)
                 logger.info("agent_tool_called", tool=tc.function.name, result=result[:200])
                 history.append({
                     "role": "tool",
@@ -583,6 +617,15 @@ class AgentService:
                 })
 
         # Fallback if loop cap hit
+        logger.warning(
+            "agent_run_complete",
+            iterations=10,
+            total_prompt_tokens=_total_prompt_tokens,
+            total_completion_tokens=_total_completion_tokens,
+            total_tokens=_total_prompt_tokens + _total_completion_tokens,
+            tools_called=_tools_called,
+            status="loop_cap_hit",
+        )
         yield "I ran into trouble completing that request. Please try again."
 
     async def _stream_final(
