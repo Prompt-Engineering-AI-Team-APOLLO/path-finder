@@ -25,9 +25,11 @@ from app.schemas.flight import (
     FlightSearchRequest,
     FlightSearchResponse,
 )
+from app.core.logging import get_logger
 from app.services import flight_mock_provider as mock
 from app.services.email_service import EmailService
 
+logger = get_logger(__name__)
 _email = EmailService()
 
 
@@ -77,6 +79,18 @@ class FlightService:
             )
 
         search_id = secrets.token_hex(8)
+        logger.info(
+            "flight_search",
+            origin=req.origin,
+            destination=req.destination,
+            departure_date=str(req.departure_date),
+            return_date=str(req.return_date) if req.return_date else None,
+            passengers=req.passengers,
+            cabin_class=req.cabin_class,
+            outbound_count=len(outbound),
+            return_count=len(return_flights) if return_flights else 0,
+            search_id=search_id,
+        )
         return FlightSearchResponse(
             search_id=search_id,
             origin=req.origin,
@@ -164,6 +178,18 @@ class FlightService:
         )
         booking = await self._repo.create(booking)
         await self._session.commit()
+        logger.info(
+            "booking_created",
+            booking_reference=booking.booking_reference,
+            user_id=str(user_id) if user_id else None,
+            cabin_class=booking.cabin_class,
+            passenger_count=booking.passenger_count,
+            total_price=booking.total_price,
+            currency=booking.currency,
+            origin=booking.outbound_origin,
+            destination=booking.outbound_destination,
+            round_trip=booking.return_flight_number is not None,
+        )
         await _email.send_booking_notification(booking, "confirmed")
         return booking
 
@@ -173,6 +199,7 @@ class FlightService:
         """Fetch a booking by reference.  Public — no ownership check."""
         booking = await self._repo.get_by_reference(reference)
         if not booking:
+            logger.warning("booking_not_found", booking_reference=reference)
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Booking {reference!r} not found",
@@ -304,6 +331,13 @@ class FlightService:
         updates["status"] = "modified"
         result = await self._repo.update(booking, updates)
         await self._session.commit()
+        logger.info(
+            "booking_modified",
+            booking_reference=reference,
+            user_id=str(user_id) if user_id else None,
+            changed_fields=[k for k in updates if k != "status"],
+            new_total_price=updates.get("total_price"),
+        )
         await _email.send_booking_notification(result, "modified")
         return result
 
@@ -316,6 +350,11 @@ class FlightService:
         booking = await self._require_owned_active_booking(reference, user_id)
         await self._repo.update(booking, {"status": "cancelled"})
         await self._session.commit()
+        logger.info(
+            "booking_cancelled",
+            booking_reference=reference,
+            user_id=str(user_id) if user_id else None,
+        )
         await _email.send_booking_notification(booking, "cancelled")
         return BookingCancelResponse(
             booking_reference=reference,

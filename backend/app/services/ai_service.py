@@ -63,14 +63,24 @@ class AIService:
         payload = [{"role": "system", "content": system_prompt}]
         payload += [m.model_dump() for m in messages]
 
+        resolved_model = model or settings.OPENAI_MODEL
         stream = await self._client.chat.completions.create(
-            model=model or settings.OPENAI_MODEL,
+            model=resolved_model,
             messages=payload,  # type: ignore[arg-type]
             temperature=temperature if temperature is not None else settings.OPENAI_TEMPERATURE,
             max_tokens=max_tokens or settings.OPENAI_MAX_TOKENS,
             stream=True,
+            stream_options={"include_usage": True},
         )
         async for chunk in stream:
+            if chunk.usage:
+                logger.info(
+                    "ai_chat_stream_completed",
+                    model=resolved_model,
+                    tokens=chunk.usage.total_tokens,
+                    prompt_tokens=chunk.usage.prompt_tokens,
+                    completion_tokens=chunk.usage.completion_tokens,
+                )
             delta = chunk.choices[0].delta.content
             if delta:
                 yield delta
