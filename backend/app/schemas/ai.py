@@ -1,11 +1,11 @@
 import uuid
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ChatMessage(BaseModel):
     role: str = Field(pattern=r"^(user|assistant|system)$")
-    content: str = Field(min_length=1, max_length=32_000)
+    content: str = Field(min_length=0, max_length=32_000)
 
 
 class ChatRequest(BaseModel):
@@ -14,6 +14,14 @@ class ChatRequest(BaseModel):
     stream: bool = False
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=16_000)
+
+    @model_validator(mode="after")
+    def drop_empty_content_messages(self) -> "ChatRequest":
+        """Strip assistant turns with empty content (tool-calling turns from the
+        OpenAI/Groq API have content='' or content=null and are not useful when
+        replayed as conversation history)."""
+        self.messages = [m for m in self.messages if m.content.strip()]
+        return self
 
 
 class ChatResponse(BaseModel):
