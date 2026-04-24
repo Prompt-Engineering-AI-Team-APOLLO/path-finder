@@ -1,5 +1,6 @@
 """Async SQLAlchemy engine + session factory."""
 
+import ssl as _ssl
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -8,7 +9,7 @@ from app.core.config import settings
 
 _connect_args: dict = {}
 if settings.DATABASE_SSL:
-    _connect_args["ssl"] = "require"
+    _connect_args["ssl"] = _ssl.create_default_context()
 if settings.DATABASE_PGBOUNCER:
     _connect_args["statement_cache_size"] = 0
 
@@ -18,6 +19,7 @@ engine = create_async_engine(
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
     pool_timeout=settings.DATABASE_POOL_TIMEOUT,
     pool_pre_ping=True,
+    pool_recycle=1800,
     echo=settings.DATABASE_ECHO,
     connect_args=_connect_args,
 )

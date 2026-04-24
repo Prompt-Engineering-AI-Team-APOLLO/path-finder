@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # ── Security ──────────────────────────────────────────────────────────────
     SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
-    ALGORITHM: str = "HS256"
+    ALGORITHM: Literal["HS256", "RS256"] = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
