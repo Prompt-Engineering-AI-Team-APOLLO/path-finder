@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     # Set to 0 to disable rate limiting entirely (useful in development)
     AGENT_RATE_LIMIT: int = 15    # requests per minute per user
     AI_CHAT_RATE_LIMIT: int = 30  # requests per minute per user
+    LOGIN_RATE_LIMIT: int = 10    # login attempts per minute per IP
 
     # ── Google OAuth ──────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""

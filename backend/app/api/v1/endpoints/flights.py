@@ -103,13 +103,13 @@ async def list_my_bookings(
     summary="Look up a booking",
     description=(
         "Retrieve full booking details by reference number (e.g. `PF-A1B2C3`). "
-        "This endpoint is public — no authentication required — so passengers can "
-        "look up their booking without logging in."
+        "Authentication required."
     ),
 )
 async def get_booking(
     booking_reference: str,
     svc: FlightServiceDep,
+    _: CurrentUser,
 ) -> BookingRead:
     booking = await svc.get_booking(booking_reference)
     return BookingRead.model_validate(booking)
