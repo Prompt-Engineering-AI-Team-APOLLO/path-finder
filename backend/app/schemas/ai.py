@@ -18,7 +18,7 @@ class ChatRequest(BaseModel):
     @model_validator(mode="after")
     def drop_empty_content_messages(self) -> "ChatRequest":
         """Strip assistant turns with empty content (tool-calling turns from the
-        OpenAI/Groq API have content='' or content=null and are not useful when
+        OpenAI API have content='' or content=null and are not useful when
         replayed as conversation history)."""
         self.messages = [m for m in self.messages if m.content.strip()]
         return self
