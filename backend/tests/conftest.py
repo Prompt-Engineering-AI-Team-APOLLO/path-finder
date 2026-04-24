@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.core import rate_limit as _rate_limit
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -27,6 +28,14 @@ TestSessionLocal = async_sessionmaker(
     expire_on_commit=False,
     autoflush=False,
 )
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def reset_rate_limits():
+    """Clear in-memory rate limit counters between tests so login attempts don't bleed across tests."""
+    _rate_limit._windows.clear()
+    yield
+    _rate_limit._windows.clear()
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)

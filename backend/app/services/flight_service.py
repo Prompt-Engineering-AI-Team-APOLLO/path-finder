@@ -206,11 +206,9 @@ class FlightService:
             )
         return booking
 
-    async def list_my_bookings(self, user_id: uuid.UUID | None = None) -> list[FlightBooking]:
-        """Return bookings for a user, or all bookings when no user_id is given."""
-        if user_id is not None:
-            return await self._repo.get_by_user_id(user_id)
-        return await self._repo.get_all()
+    async def list_my_bookings(self, user_id: uuid.UUID) -> list[FlightBooking]:
+        """Return bookings belonging to the given user."""
+        return await self._repo.get_by_user_id(user_id)
 
     # ── Modify ────────────────────────────────────────────────────────────────
 

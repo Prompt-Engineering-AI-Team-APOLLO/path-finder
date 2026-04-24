@@ -57,11 +57,6 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = 2048
     OPENAI_TEMPERATURE: float = 0.7
 
-    # ── Groq (agent) ──────────────────────────────────────────────────────────
-    GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
-    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
-
     # ── Vector DB (Pinecone) ──────────────────────────────────────────────────
     PINECONE_API_KEY: str = ""
     PINECONE_ENVIRONMENT: str = ""
@@ -80,6 +75,7 @@ class Settings(BaseSettings):
     # Set to 0 to disable rate limiting entirely (useful in development)
     AGENT_RATE_LIMIT: int = 15    # requests per minute per user
     AI_CHAT_RATE_LIMIT: int = 30  # requests per minute per user
+    LOGIN_RATE_LIMIT: int = 10    # login attempts per minute per IP
 
     # ── Google OAuth ──────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""

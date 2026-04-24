@@ -1,8 +1,8 @@
 """AgentService — agentic loop that gives the LLM tools to search and book flights.
 
-Uses Groq's OpenAI-compatible API (llama-3.3-70b-versatile) with function calling.
+Uses OpenAI's API (gpt-4o) with function calling.
 The loop:
-  1. Send conversation + tool definitions to Groq
+  1. Send conversation + tool definitions to OpenAI
   2. If the model calls a tool → execute it via FlightService, append result, repeat
   3. When the model stops calling tools → stream the final text response
 """
@@ -350,7 +350,7 @@ def _needs_tool(history: list[dict]) -> bool:
 
 # ── Safety-refusal detection — secondary safety net ───────────────────────────
 # Even with tool_choice="required" the model occasionally emits a refusal
-# text block instead of a tool call (Groq/Llama bug). These phrases catch that.
+# text block instead of a tool call. These phrases catch that.
 #
 # IMPORTANT: Only include phrases that are UNAMBIGUOUSLY a tool-use refusal.
 # False positives cause an infinite detect→force→detect loop that burns all
@@ -504,10 +504,7 @@ class AgentService:
 
             history = _trim_history(history)
 
-            # Groq's llama models occasionally emit function calls in the old
-            # XML format (<function=name>…</function>) instead of JSON, causing
-            # a 400 tool_use_failed error. Retrying usually produces well-formed
-            # JSON on the next attempt.
+            # Retry up to 3 times on transient API errors to improve resilience.
             response = None
             _llm_ms = 0.0
             for attempt in range(3):
