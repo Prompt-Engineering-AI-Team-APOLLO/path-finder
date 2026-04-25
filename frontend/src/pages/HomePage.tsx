@@ -250,7 +250,6 @@ interface HomePageProps {
   accessToken?: string;
   onOpenProfile?: () => void;
   onSignOut?: () => void;
-  onContinueToBooking?: (flight: FlightOffer, passengerCount: number) => void;
   onNavigate?: (page: string) => void;
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
@@ -266,11 +265,14 @@ interface HomePageProps {
   setSelectedFlightId: React.Dispatch<React.SetStateAction<string | null>>;
   flightRoute: { from: string; to: string } | null;
   setFlightRoute: React.Dispatch<React.SetStateAction<{ from: string; to: string } | null>>;
-  passengerCount: number;
   setPassengerCount: React.Dispatch<React.SetStateAction<number>>;
+  // Chat ↔ UI sync
+  mentionedFlightId: string | null;
+  setMentionedFlightId: React.Dispatch<React.SetStateAction<string | null>>;
+  setSelectedFlight: React.Dispatch<React.SetStateAction<FlightOffer | null>>;
 }
 
-export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onContinueToBooking, onNavigate, messages, setMessages, onClearChat, flightResults, setFlightResults, rawFlightResults, setRawFlightResults, showFlightResults, setShowFlightResults, selectedFlightId, setSelectedFlightId, flightRoute, setFlightRoute, passengerCount, setPassengerCount }: HomePageProps) {
+export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onNavigate, messages, setMessages, onClearChat, flightResults, setFlightResults, rawFlightResults, setRawFlightResults, showFlightResults, setShowFlightResults, selectedFlightId, setSelectedFlightId, flightRoute, setFlightRoute, setPassengerCount, mentionedFlightId, setMentionedFlightId, setSelectedFlight }: HomePageProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [detailFlight, setDetailFlight] = useState<FlightOffer | null>(null);
@@ -321,7 +323,11 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
       .toISOString()
       .split('T')[0];
 
-    const extractPrompt = `You are a flight parameter extractor. Read the ENTIRE conversation and return ONLY a JSON object — no other text.
+    const flightListForExtractor = rawFlightResults && rawFlightResults.length > 0
+      ? `\nAVAILABLE FLIGHTS (use these exact flight numbers for highlighting):\n${rawFlightResults.map(f => `• ${f.airline} ${f.flight_number} $${f.price_per_person}`).join('\n')}`
+      : '';
+
+    const extractPrompt = `You are a flight parameter and intent extractor. Read the ENTIRE conversation and return ONLY a JSON object — no other text.
 
 STEP 1 — Decide should_search:
 - true  → user wants a NEW flight search and both origin AND destination are known from any message
@@ -334,17 +340,27 @@ STEP 2 — Extract filters (include any that apply, omit others):
 - max_stops: number — e.g. "nonstop" → 0, "one stop or less" → 1
 - airlines: ["Airline Name"] — e.g. "only Delta" → ["Delta"]
 
-OUTPUT when should_search true:
-{"should_search":true,"origin":"ATL","destination":"LAX","departure_date":"YYYY-MM-DD","passengers":1,"cabin_class":"economy"}
-(add any filter fields if also mentioned)
+STEP 3 — Determine ui_intent from the MOST RECENT exchange ONLY:
+- "proceed_to_booking": user says "yes book it", "I'll take it", "book the [flight]", "I want to book", "let's do it", "yes I want that one", "confirm", "go ahead", "book it"
+- "search_more": user says "search again", "different flights", "something else", "I don't like these", "show me other options", "never mind", "no" (declining a specific flight offer), "let me look at other options"
+- "highlight_flight": AI assistant just recommended or is currently discussing a SPECIFIC flight from the available list (e.g. "I recommend the Delta flight", "the cheapest option is...")
+- "none": general conversation, new search, filtering, or unclear
 
-OUTPUT when should_search false (filtering only):
-{"should_search":false}
-(add any filter fields that apply)
+STEP 4 — If ui_intent is "highlight_flight" or "proceed_to_booking", identify the flight:
+- highlighted_flight_number: exact flight number from available list (e.g. "DL 401") or null
+- highlighted_airline: airline name (e.g. "Delta Air Lines") or null
+(Only fill these if you can match to an available flight)
+${flightListForExtractor}
+
+OUTPUT when should_search true:
+{"should_search":true,"origin":"ATL","destination":"LAX","departure_date":"YYYY-MM-DD","passengers":1,"cabin_class":"economy","ui_intent":"none","highlighted_flight_number":null,"highlighted_airline":null}
+
+OUTPUT when should_search false:
+{"should_search":false,"ui_intent":"highlight_flight","highlighted_flight_number":"DL 401","highlighted_airline":"Delta Air Lines"}
 
 IATA codes: New York=JFK, Newark=EWR, Atlanta=ATL, Los Angeles=LAX, Chicago=ORD, Miami=MIA, San Francisco=SFO, Boston=BOS, Dallas=DFW, Seattle=SEA, Denver=DEN, Washington DC=DCA, Orlando=MCO, Houston=IAH, Las Vegas=LAS, Philadelphia=PHL, Charlotte=CLT, Phoenix=PHX, Minneapolis=MSP, Detroit=DTW, Portland=PDX
 
-Other rules:
+Rules:
 - Missing date → use ${defaultDate}
 - Passengers default 1, cabin default economy
 - Return ONLY valid JSON`;
@@ -434,7 +450,8 @@ Other rules:
       const params = await extractFlightParams(historyWithReply);
 
       if (params?.should_search) {
-        // New search
+        // New search — clear any previous mention/selection
+        setMentionedFlightId(null);
         const flightRes = await fetch(`${API_BASE}/flights/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -463,6 +480,42 @@ Other rules:
         const filtered = applyFilters(rawFlightResults, params);
         setFlightResults(filtered.length > 0 ? filtered : rawFlightResults);
         setShowFlightResults(true);
+      }
+
+      // ── Chat ↔ UI intent handling ──────────────────────────────────────────
+      if (params && flightResults && flightResults.length > 0) {
+        const intent = params.ui_intent as string | undefined;
+        const highlightNum = (params.highlighted_flight_number as string | null) ?? null;
+        const highlightAirline = (params.highlighted_airline as string | null) ?? null;
+
+        // Find the flight the AI is discussing
+        const findMentioned = (): FlightOffer | null => {
+          if (!highlightNum && !highlightAirline) return null;
+          return flightResults.find(f => {
+            const numMatch = highlightNum &&
+              f.flight_number.replace(/\s+/g, '').toLowerCase() === highlightNum.replace(/\s+/g, '').toLowerCase();
+            const airlineMatch = highlightAirline &&
+              f.airline.toLowerCase().includes(highlightAirline.toLowerCase());
+            return numMatch || airlineMatch;
+          }) ?? null;
+        };
+
+        if (intent === 'search_more') {
+          // User wants to look at different flights — reset the right panel
+          setShowFlightResults(false);
+          setMentionedFlightId(null);
+        } else if (intent === 'highlight_flight') {
+          const match = findMentioned();
+          if (match) setMentionedFlightId(match.offer_id);
+        } else if (intent === 'proceed_to_booking') {
+          const match = findMentioned() ?? flightResults.find(f => f.offer_id === selectedFlightId) ?? flightResults[0];
+          if (match) {
+            setSelectedFlightId(match.offer_id);
+            setSelectedFlight(match);
+            // Small delay so user sees the card highlight before navigating
+            setTimeout(() => onNavigate?.('plan'), 600);
+          }
+        }
       }
     } catch {
       setMessages(prev => [...prev, {
@@ -755,7 +808,11 @@ Other rules:
                       currency={flight.currency}
                       recommended={i === 0}
                       selected={selectedFlightId === flight.offer_id}
-                      onSelect={() => setSelectedFlightId(flight.offer_id)}
+                      mentioned={mentionedFlightId === flight.offer_id}
+                      onSelect={() => {
+                        setSelectedFlightId(flight.offer_id);
+                        setMentionedFlightId(null);
+                      }}
                     />
                     <button
                       type="button"
@@ -776,7 +833,10 @@ Other rules:
                   fullWidth
                   onClick={() => {
                     const flight = flightResults?.find(f => f.offer_id === selectedFlightId);
-                    if (flight && onContinueToBooking) onContinueToBooking(flight, passengerCount);
+                    if (flight) {
+                      setSelectedFlight(flight);
+                      onNavigate?.('plan');
+                    }
                   }}
                 >
                   Continue to Booking →
