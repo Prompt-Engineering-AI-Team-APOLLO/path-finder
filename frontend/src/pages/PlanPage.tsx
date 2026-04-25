@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import {
   TopNav,
   PageLayout,
@@ -12,6 +13,7 @@ import {
   Badge,
 } from '../components/ui';
 import type { Message } from '../components/ui';
+import type { FlightOffer, BookingRead } from './BookingPage';
 
 /* ── Icons ── */
 const PlaneIcon = () => (
@@ -52,12 +54,21 @@ const SmallBedIcon = () => (
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
-
 const PLAN_STEPS = [
   { number: '01', label: 'Search' },
   { number: '02', label: 'Plan' },
   { number: '03', label: 'Confirm' },
 ];
+
+/* ── Helpers ── */
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+function formatDuration(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
 
 /* ── Empty hotel placeholder ── */
 function NoHotelSlot() {
@@ -85,18 +96,55 @@ function NoHotelSlot() {
 ───────────────────────────────────────────── */
 interface PlanPageProps {
   userEmail?: string;
+  accessToken?: string;
   onNavigate?: (page: string) => void;
   messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  setMessages: Dispatch<SetStateAction<Message[]>>;
   onClearChat?: () => void;
+  // Flight selected from HomePage chat
+  selectedFlight?: FlightOffer | null;
+  passengerCount?: number;
+  setConfirmedBooking?: (booking: BookingRead) => void;
 }
 
-export default function PlanPage({ userEmail, onNavigate, messages, setMessages, onClearChat }: PlanPageProps) {
-  const [selectedFlight, setSelectedFlight] = useState<string | null>('JP448');
+export default function PlanPage({
+  userEmail,
+  accessToken,
+  onNavigate,
+  messages,
+  setMessages,
+  onClearChat,
+  selectedFlight,
+  passengerCount = 1,
+  setConfirmedBooking,
+}: PlanPageProps) {
   const [selectedStyle, setSelectedStyle] = useState<string>('Urban Adventure');
+  const [isTyping, setIsTyping] = useState(false);
+
+  // Track which flight we've already auto-triggered for (avoid re-firing on re-render)
+  const triggeredFlightRef = useRef<string | null>(null);
+
+  const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const getToken = () => {
+    const raw = localStorage.getItem('pathfinder_auth_session') || sessionStorage.getItem('pathfinder_auth_session');
+    return raw ? JSON.parse(raw)?.accessToken : (accessToken ?? null);
+  };
 
   const handleSend = async (text: string) => {
-    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const ts = now();
+
+    // ── "Search more" intent: navigate back to HomePage ──────────────────────
+    const searchMorePattern = /\b(search|find|look|show).{0,20}(more|again|different|other|else|alternatives|new|another)|(go back|different flight|something else|don't like|start over|new search|cancel booking|never mind)\b/i;
+    if (searchMorePattern.test(text)) {
+      setMessages(prev => [
+        ...prev,
+        { id: String(Date.now()), role: 'user' as const, content: text, timestamp: ts },
+        { id: String(Date.now() + 1), role: 'assistant' as const, content: "No problem! Let me take you back so you can search for other flights.", timestamp: ts },
+      ]);
+      setTimeout(() => onNavigate?.('home'), 900);
+      return;
+    }
 
     const userMsg: Message = { id: String(Date.now()), role: 'user', content: text, timestamp: ts };
     const assistantId = String(Date.now() + 1);
@@ -104,13 +152,12 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
 
     const nextMessages = [...messages, userMsg];
     setMessages([...nextMessages, assistantMsg]);
-    
-    try {
-      const sessionRaw =
-        localStorage.getItem('pathfinder_auth_session') ||
-        sessionStorage.getItem('pathfinder_auth_session');
-      const token = sessionRaw ? JSON.parse(sessionRaw)?.accessToken : null;
+    setIsTyping(true);
 
+    let fullResponse = '';
+
+    try {
+      const token = getToken();
       const res = await fetch(`${API_BASE}/agent/chat`, {
         method: 'POST',
         headers: {
@@ -136,16 +183,42 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
         const raw = decoder.decode(value, { stream: true });
         for (const line of raw.split('\n')) {
           if (!line.startsWith('data: ')) continue;
-          const raw_chunk = line.slice(6);
-          if (raw_chunk === '[DONE]') break;
+          const rawChunk = line.slice(6);
+          if (rawChunk === '[DONE]') break;
           let chunk: string;
-          try { chunk = JSON.parse(raw_chunk); } catch { chunk = raw_chunk; }
+          try { chunk = JSON.parse(rawChunk); } catch { chunk = rawChunk; }
+          fullResponse += chunk;
           setMessages((prev: Message[]) =>
             prev.map((m: Message) => m.id === assistantId ? { ...m, content: m.content + chunk } : m)
           );
         }
       }
-    } catch (err) {
+
+      // ── Detect booking reference in agent response ──────────────────────────
+      // Pattern: PF- followed by 4-10 uppercase alphanumeric chars
+      const bookingRefMatch = fullResponse.match(/\bPF-[A-Z0-9]{4,10}\b/);
+      if (bookingRefMatch && setConfirmedBooking) {
+        const ref = bookingRefMatch[0];
+        try {
+          const fetchToken = getToken();
+          const bookingRes = await fetch(`${API_BASE}/flights/bookings/${ref}`, {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(fetchToken ? { Authorization: `Bearer ${fetchToken}` } : {}),
+            },
+          });
+          if (bookingRes.ok) {
+            const booking: BookingRead = await bookingRes.json();
+            setConfirmedBooking(booking);
+            // Brief pause so user reads the confirmation message before navigating
+            setTimeout(() => onNavigate?.('confirm'), 1500);
+          }
+        } catch {
+          // Booking fetch failed — stay on page, user can navigate manually
+        }
+      }
+
+    } catch {
       setMessages((prev: Message[]) =>
         prev.map((m: Message) =>
           m.id === assistantId
@@ -154,10 +227,37 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
         )
       );
     } finally {
+      setIsTyping(false);
     }
   };
 
-  const totalCost = selectedFlight === 'JP448' ? 3210 : selectedFlight === 'JP442' ? 1462 : 0;
+  // ── Auto-trigger agent when a flight is selected ──────────────────────────
+  useEffect(() => {
+    if (!selectedFlight) return;
+    if (triggeredFlightRef.current === selectedFlight.offer_id) return;
+    triggeredFlightRef.current = selectedFlight.offer_id;
+
+    const dateStr = new Date(selectedFlight.departure_at).toLocaleDateString([], {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    });
+    const cabinLabel = selectedFlight.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const triggerText = `I'd like to book the ${selectedFlight.airline} flight ${selectedFlight.flight_number} from ${selectedFlight.origin_city} (${selectedFlight.origin}) to ${selectedFlight.destination_city} (${selectedFlight.destination}) on ${dateStr} for ${passengerCount} passenger(s) in ${cabinLabel} class at $${selectedFlight.price_per_person}/person. Please search for this flight and help me complete the booking by collecting my passenger details.`;
+    handleSend(triggerText);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFlight?.offer_id]);
+
+  /* ── Derived display values ── */
+  const flightPrice = selectedFlight ? selectedFlight.total_price : 0;
+  const activityPrice = 320;
+  const totalCost = flightPrice + activityPrice;
+
+  const routeLabel = selectedFlight
+    ? `${selectedFlight.origin_city} (${selectedFlight.origin}) → ${selectedFlight.destination_city} (${selectedFlight.destination})`
+    : 'No flight selected';
+
+  const flightDetailLabel = selectedFlight
+    ? `${selectedFlight.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} · ${new Date(selectedFlight.departure_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : '';
 
   /* ── Left panel ── */
   const leftPanel = (
@@ -168,10 +268,13 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
       assistantName="Pathfinder AI"
       assistantSubtitle="Your Travel Curator"
       isOnline={true}
-      inputPlaceholder="Ask your companion..."
+      isTyping={isTyping}
+      inputLoading={isTyping}
+      inputDisabled={isTyping}
+      inputPlaceholder={selectedFlight ? "Provide passenger details or ask anything..." : "Ask your companion..."}
       quickActions={[
-        { icon: <SmallPlaneIcon />, label: 'Search flights', onClick: () => onNavigate?.('home') },
-        { icon: <SmallBedIcon />, label: 'Suggest 5-star hotels' },
+        { icon: <SmallPlaneIcon />, label: 'Search other flights', onClick: () => onNavigate?.('home') },
+        { icon: <SmallBedIcon />, label: 'Suggest 5-star hotels', onClick: () => handleSend('Can you suggest some great hotels near the destination?') },
       ]}
     />
   );
@@ -188,12 +291,14 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
         <TripSummaryItem
           icon={<PlaneIcon />}
           label="Flights"
-          value="London (LHR) → Tokyo (HND)"
-          price={selectedFlight ? (selectedFlight === 'JP448' ? 2890 : 1142) : undefined}
+          value={routeLabel}
+          price={selectedFlight ? flightPrice : undefined}
         >
-          <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)' }}>
-            {selectedFlight === 'JP448' ? 'Business Class · Oct 12' : selectedFlight === 'JP442' ? 'Economy · Oct 12' : ''}
-          </p>
+          {flightDetailLabel && (
+            <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)' }}>
+              {flightDetailLabel}
+            </p>
+          )}
         </TripSummaryItem>
 
         {/* Hotel */}
@@ -209,7 +314,7 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
           icon={<CompassIcon />}
           label="Activities"
           value="Mt. Fuji Private Tour"
-          price={320}
+          price={activityPrice}
           expandable
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -227,11 +332,11 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
         label="Total Trip Cost"
         totalPrice={totalCost}
         subLabel="Inc. taxes & fees"
-        ctaLabel="Review and Confirm →"
+        ctaLabel={selectedFlight ? "Confirm via Chat →" : "Select a flight first"}
         ctaDisabled={!selectedFlight}
         breakdown={selectedFlight ? [
-          { label: selectedFlight === 'JP448' ? 'Business Class Flight' : 'Economy Flight', amount: selectedFlight === 'JP448' ? 2890 : 1142 },
-          { label: 'Mt. Fuji Tour', amount: 320 },
+          { label: `${selectedFlight.airline} ${selectedFlight.flight_number} (${passengerCount} pax)`, amount: flightPrice },
+          { label: 'Mt. Fuji Tour', amount: activityPrice },
         ] : []}
       />
     </div>
@@ -295,73 +400,61 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
             </div>
           </div>
 
-          {/* Outbound flights */}
+          {/* Outbound flight */}
           <div style={{ marginBottom: 24 }}>
             <SectionHeader
               icon={<PlaneIcon />}
-              heading="Outbound Flights"
-              subheading="London Heathrow → Tokyo Haneda"
-              theme="light"
-              className="mb-4"
-            />
-            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <FlightCard
-                airline="Japan Airlines"
-                flightNumber="JP 442"
-                cabinClass="Economy"
-                departureTime="10:20"
-                departureCode="LHR"
-                arrivalTime="06:05"
-                arrivalCode="HND"
-                duration="11h 45m"
-                stops={0}
-                price={1142}
-                selected={selectedFlight === 'JP442'}
-                onSelect={() => setSelectedFlight(selectedFlight === 'JP442' ? null : 'JP442')}
-              />
-              <FlightCard
-                airline="Japan Airlines"
-                flightNumber="JP 448"
-                cabinClass="Business"
-                departureTime="13:50"
-                departureCode="LHR"
-                arrivalTime="09:35"
-                arrivalCode="HND"
-                duration="11h 45m"
-                stops={0}
-                price={2890}
-                recommended
-                selected={selectedFlight === 'JP448'}
-                onSelect={() => setSelectedFlight(selectedFlight === 'JP448' ? null : 'JP448')}
-              />
-            </div>
-          </div>
-
-          {/* Inbound flights */}
-          <div>
-            <SectionHeader
-              icon={<PlaneIcon />}
-              heading="Inbound Flights"
-              subheading="Tokyo Haneda → London Heathrow"
+              heading="Your Selected Flight"
+              subheading={selectedFlight ? routeLabel : 'No flight selected yet'}
               theme="light"
               className="mb-4"
             />
             <div style={{ marginTop: 14 }}>
               {selectedFlight ? (
-                <EmptyState
-                  icon={<SearchIcon />}
-                  message="Loading return options..."
-                  description="Fetching best-value inbound flights matched to your outbound selection."
+                <FlightCard
+                  airline={selectedFlight.airline}
+                  flightNumber={selectedFlight.flight_number}
+                  cabinClass={selectedFlight.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                  departureTime={formatTime(selectedFlight.departure_at)}
+                  departureCode={selectedFlight.origin}
+                  arrivalTime={formatTime(selectedFlight.arrival_at)}
+                  arrivalCode={selectedFlight.destination}
+                  duration={formatDuration(selectedFlight.duration_minutes)}
+                  stops={selectedFlight.stops}
+                  price={selectedFlight.price_per_person}
+                  currency={selectedFlight.currency}
+                  recommended
+                  selected
                 />
               ) : (
                 <EmptyState
                   icon={<SearchIcon />}
-                  message="Select your outbound flight first"
-                  description="Return options will appear once you choose an outbound flight above."
+                  message="No flight selected"
+                  description="Go back to search and select a flight to continue with booking."
                 />
               )}
             </div>
           </div>
+
+          {/* Booking instructions */}
+          {selectedFlight && (
+            <div
+              style={{
+                padding: '16px 20px',
+                background: 'rgba(112,71,235,0.06)',
+                border: '1px solid rgba(112,71,235,0.2)',
+                borderRadius: 'var(--radius-xl)',
+                marginBottom: 24,
+              }}
+            >
+              <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', margin: '0 0 6px' }}>
+                Complete your booking via chat
+              </p>
+              <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: 0, lineHeight: 1.6 }}>
+                Your AI curator on the left will guide you through the booking. Provide your passenger details (full name, date of birth, passport number) and contact email when asked.
+              </p>
+            </div>
+          )}
         </div>
       </PageLayout>
     </>
