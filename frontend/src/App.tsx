@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import LoginPage from './pages/LoginPage'
-import HomePage from './pages/HomePage'
 import PlanPage from './pages/PlanPage'
 import ConfirmPage from './pages/ConfirmPage'
 import BookingPage from './pages/BookingPage'
@@ -15,7 +14,7 @@ const BOOKING_KEY = 'pathfinder_booking'
 const BOOKING_CTX_KEY = 'pathfinder_booking_ctx'
 
 // ── Types ───────────────────────────────────────────────────────────────────
-type Page = 'login' | 'home' | 'plan' | 'confirm' | 'booking'
+type Page = 'login' | 'plan' | 'confirm' | 'booking'
 
 type AuthSession = {
   email: string
@@ -68,10 +67,60 @@ const loadBookingCtx = (): BookingContext | null => {
 const loadPage = (): Page => {
   const session = loadSession()
   if (!session) return 'login'
-  const stored = localStorage.getItem(PAGE_KEY) as Page | null
-  const validPages: Page[] = ['home', 'plan', 'confirm']
-  // 'booking' is not restored on refresh (context lost); fallback to home
-  return stored && validPages.includes(stored) ? stored : 'home'
+  const stored = localStorage.getItem(PAGE_KEY)
+  // Migrate legacy stored page "home" to "plan"
+  if (stored === 'home') return 'plan'
+  const validPages: Page[] = ['plan', 'confirm']
+  // 'booking' is not restored on refresh (context lost); fallback to plan
+  return stored && validPages.includes(stored as Page) ? (stored as Page) : 'plan'
+}
+
+const toIso = (value: string): string => new Date(value).toISOString()
+
+const makeSelectionBooking = (
+  outbound: FlightOffer,
+  inbound: FlightOffer,
+  totalPrice: number,
+  currency: string,
+  userEmail?: string,
+): BookingRead => {
+  const refSeed = `${outbound.flight_number}${inbound.flight_number}${Date.now().toString().slice(-6)}`.replace(/\s+/g, '').toUpperCase()
+  const bookingReference = `PF-${refSeed.slice(0, 8)}`
+  const now = new Date().toISOString()
+
+  return {
+    id: `plan-${Date.now()}`,
+    booking_reference: bookingReference,
+    status: 'confirmed',
+    outbound_flight_number: outbound.flight_number,
+    outbound_airline: outbound.airline,
+    outbound_airline_code: outbound.flight_number.slice(0, 2).toUpperCase(),
+    outbound_origin: outbound.origin,
+    outbound_destination: outbound.destination,
+    outbound_origin_city: outbound.origin_city,
+    outbound_destination_city: outbound.destination_city,
+    outbound_departure_at: toIso(outbound.departure_at),
+    outbound_arrival_at: toIso(outbound.arrival_at),
+    outbound_duration_minutes: outbound.duration_minutes,
+    outbound_stops: outbound.stops,
+    cabin_class: outbound.cabin_class,
+    passenger_count: 1,
+    total_price: totalPrice,
+    currency,
+    passengers: [
+      {
+        first_name: 'Traveler',
+        last_name: 'Guest',
+        date_of_birth: '1990-01-01',
+        passport_number: null,
+        nationality: null,
+      },
+    ],
+    contact_email: userEmail ?? 'traveler@example.com',
+    contact_phone: null,
+    created_at: now,
+    updated_at: now,
+  }
 }
 
 // ── App ──────────────────────────────────────────────────────────────────────
@@ -81,14 +130,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>(loadMessages)
   const [confirmedBooking, setConfirmedBooking] = useState<BookingRead | null>(loadBooking)
 
-  // ── Flight search state — lifted so it survives page navigation ──
-  const [flightResults, setFlightResults] = useState<FlightOffer[] | null>(null)
-  const [rawFlightResults, setRawFlightResults] = useState<FlightOffer[] | null>(null)
-  const [showFlightResults, setShowFlightResults] = useState(false)
-  const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null)
-  const [flightRoute, setFlightRoute] = useState<{ from: string; to: string } | null>(null)
-  const [passengerCount, setPassengerCount] = useState(1)
-  const [bookingContext, setBookingContext] = useState<BookingContext | null>(loadBookingCtx)
+  const [bookingContext] = useState<BookingContext | null>(loadBookingCtx)
 
   // ── Persist page ──
   useEffect(() => {
@@ -117,7 +159,10 @@ export default function App() {
   }, [bookingContext])
 
   // ── Navigation handler ──
-  const navigate = (target: string) => setPage(target as Page)
+  const navigate = (target: string) => {
+    const mapped = target === 'home' ? 'plan' : target
+    setPage(mapped as Page)
+  }
 
   // ── Auth handlers ──
   const handleSignInSuccess = ({
@@ -145,20 +190,7 @@ export default function App() {
       localStorage.removeItem(AUTH_KEY)
     }
     setSession(nextSession)
-    setPage('home')
-  }
-
-  const handleSignOut = () => {
-    localStorage.removeItem(AUTH_KEY)
-    localStorage.removeItem(PAGE_KEY)
-    localStorage.removeItem(CHAT_KEY)
-    localStorage.removeItem(BOOKING_KEY)
-    sessionStorage.clear()
-    setSession(null)
-    setMessages([makeWelcomeMessage()])
-    setConfirmedBooking(null)
-    setBookingContext(null)
-    setPage('login')
+    setPage('plan')
   }
 
   // ── Chat handlers ──
@@ -166,12 +198,6 @@ export default function App() {
     const fresh = [makeWelcomeMessage()]
     setMessages(fresh)
     localStorage.setItem(CHAT_KEY, JSON.stringify(fresh))
-  }
-
-  // ── Booking handlers ──
-  const handleContinueToBooking = (flight: FlightOffer, passengerCount: number) => {
-    setBookingContext({ flight, passengerCount })
-    setPage('booking')
   }
 
   const handleBookingComplete = (booking: BookingRead) => {
@@ -189,6 +215,30 @@ export default function App() {
     setPage('confirm')
   }
 
+  const handlePlanConfirmSelection = ({
+    outbound,
+    inbound,
+    totalPrice,
+    currency,
+  }: {
+    outbound: FlightOffer
+    inbound: FlightOffer
+    totalPrice: number
+    currency: string
+  }) => {
+    const booking = makeSelectionBooking(outbound, inbound, totalPrice, currency, session?.email)
+    setConfirmedBooking(booking)
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `plan-confirm-${Date.now()}`,
+        role: 'assistant' as const,
+        content: `Your trip is confirmed. Trip summary saved for ${booking.contact_email}. Please check your email for itinerary details.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ])
+  }
+
   // ── Shared CompanionPanel props ──
   const sharedChat = {
     messages,
@@ -203,64 +253,25 @@ export default function App() {
         <LoginPage onSignInSuccess={handleSignInSuccess} />
       )}
 
-      {page === 'home' && (
-        <HomePage
-          userEmail={session?.email}
-          accessToken={session?.accessToken}
-          onOpenProfile={() => setPage('home')}
-          onSignOut={handleSignOut}
-          onContinueToBooking={handleContinueToBooking}
-          onNavigate={navigate}
-          flightResults={flightResults}
-          setFlightResults={setFlightResults}
-          rawFlightResults={rawFlightResults}
-          setRawFlightResults={setRawFlightResults}
-          showFlightResults={showFlightResults}
-          setShowFlightResults={setShowFlightResults}
-          selectedFlightId={selectedFlightId}
-          setSelectedFlightId={setSelectedFlightId}
-          flightRoute={flightRoute}
-          setFlightRoute={setFlightRoute}
-          passengerCount={passengerCount}
-          setPassengerCount={setPassengerCount}
-          {...sharedChat}
-        />
-      )}
-
       {page === 'booking' && bookingContext && (
         <BookingPage
           flight={bookingContext.flight}
           passengerCount={bookingContext.passengerCount}
           accessToken={session?.accessToken}
           userEmail={session?.email}
-          onBack={() => setPage('home')}
+          onBack={() => setPage('plan')}
           onBookingComplete={handleBookingComplete}
           onNavigate={navigate}
           {...sharedChat}
         />
       )}
 
-      {/* If booking page is requested but context lost (e.g. refresh), go home */}
+      {/* If booking page is requested but context lost (e.g. refresh), go plan */}
       {page === 'booking' && !bookingContext && (
-        <HomePage
+        <PlanPage
           userEmail={session?.email}
-          accessToken={session?.accessToken}
-          onOpenProfile={() => setPage('home')}
-          onSignOut={handleSignOut}
-          onContinueToBooking={handleContinueToBooking}
           onNavigate={navigate}
-          flightResults={flightResults}
-          setFlightResults={setFlightResults}
-          rawFlightResults={rawFlightResults}
-          setRawFlightResults={setRawFlightResults}
-          showFlightResults={showFlightResults}
-          setShowFlightResults={setShowFlightResults}
-          selectedFlightId={selectedFlightId}
-          setSelectedFlightId={setSelectedFlightId}
-          flightRoute={flightRoute}
-          setFlightRoute={setFlightRoute}
-          passengerCount={passengerCount}
-          setPassengerCount={setPassengerCount}
+          onConfirmSelection={handlePlanConfirmSelection}
           {...sharedChat}
         />
       )}
@@ -269,6 +280,7 @@ export default function App() {
         <PlanPage
           userEmail={session?.email}
           onNavigate={navigate}
+          onConfirmSelection={handlePlanConfirmSelection}
           {...sharedChat}
         />
       )}

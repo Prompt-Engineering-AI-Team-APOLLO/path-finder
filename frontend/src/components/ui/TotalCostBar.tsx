@@ -81,9 +81,9 @@ export default function TotalCostBar({
       )}
 
       {/* Total row + CTA */}
-      <div className="flex items-center justify-between gap-4">
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         {/* Price */}
-        <div>
+        <div style={{ flex: '1 1 120px', minWidth: 0 }}>
           <p
             style={{
               color: 'var(--color-text-muted)',
@@ -129,7 +129,7 @@ export default function TotalCostBar({
           disabled={ctaDisabled}
           loading={ctaLoading}
           fullWidth={false}
-          style={{ minWidth: 160 }}
+          style={{ minWidth: 120, maxWidth: '100%' }}
           icon={
             !ctaLoading ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

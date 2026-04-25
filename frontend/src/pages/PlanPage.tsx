@@ -9,216 +9,89 @@ import {
   EmptyState,
   TripSummaryItem,
   TotalCostBar,
-  Badge,
 } from '../components/ui';
 import type { Message } from '../components/ui';
 
-const PlaneIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-  </svg>
-);
-const BedIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <path d="M2 4v16M2 8h18a2 2 0 012 2v8H2M2 12h20"/>
-  </svg>
-);
-const CarIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
-  </svg>
-);
-const CompassIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
-  </svg>
-);
-const SearchIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-  </svg>
-);
-const SmallPlaneIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-  </svg>
-);
-const SmallBedIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <path d="M2 4v16M2 8h18a2 2 0 012 2v8H2M2 12h20"/>
-  </svg>
-);
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const PLAN_STATE_KEY = 'pathfinder_plan_state';
 
-const STORAGE_KEY = 'pathfinder_plan_context_v1';
-const TRIP_NIGHTS = 4;
-const CAR_DAYS = 4;
-
-type PlannerStep = 'route' | 'flight' | 'hotel' | 'car' | 'activity' | 'done';
-
-interface FlightOption {
-  id: string;
+interface FlightOffer {
+  offer_id: string;
+  flight_number: string;
   airline: string;
-  flightNumber: string;
-  cabinClass: string;
-  departureTime: string;
-  departureCode: string;
-  departureCity: string;
-  departureCountry: string;
-  arrivalTime: string;
-  arrivalCode: string;
-  arrivalCity: string;
-  arrivalCountry: string;
-  duration: string;
-  price: number;
+  origin: string;
+  destination: string;
+  origin_city: string;
+  destination_city: string;
+  departure_at: string;
+  arrival_at: string;
+  duration_minutes: number;
+  stops: number;
+  cabin_class: string;
+  price_per_person: number;
+  total_price: number;
+  currency: string;
+  baggage_included: boolean;
 }
 
-interface HotelOption {
-  id: string;
-  name: string;
-  area: string;
-  city: string;
-  country: string;
-  roomType: string;
-  pricePerNight: number;
+interface FlightSearchResponse {
+  outbound_flights: FlightOffer[];
+  return_flights?: FlightOffer[] | null;
 }
 
-interface CarOption {
-  id: string;
-  name: string;
-  type: string;
+type StyleTagVariant = 'recommended' | 'curated' | 'selected' | 'escape' | 'confirmed' | 'trending' | 'default';
+
+interface StyleSuggestion {
   city: string;
-  country: string;
-  transmission: string;
-  pricePerDay: number;
+  idea: string;
+  image: string;
+}
+
+interface TravelStyleOption {
+  title: string;
+  tag: string;
+  tagVariant: StyleTagVariant;
+  description: string;
+  image: string;
+  suggestions: StyleSuggestion[];
+  followUpQuestions: string[];
 }
 
 interface ActivityOption {
   id: string;
-  name: string;
-  details: string;
-  city: string;
-  country: string;
+  title: string;
+  description: string;
   price: number;
+  image: string;
+  city: string;
 }
 
-interface PlannerContext {
+interface PersistedPlanState {
   selectedStyle: string;
-  outboundCountry: string | null;
-  inboundCountry: string | null;
-  selectedFlightId: string | null;
-  selectedHotelId: string | null;
-  selectedCarId: string | null;
-  selectedActivityIds: string[];
-  step: PlannerStep;
+  origin: string | null;
+  destination: string | null;
+  destinationTargets?: string[];
+  returnTo: string | null;
+  selectedActivityIds?: string[];
+  outboundFlights: FlightOffer[];
+  inboundFlights: FlightOffer[];
+  selectedOutboundId: string | null;
+  selectedInboundId: string | null;
 }
 
-const FLIGHT_OPTIONS: FlightOption[] = [
-  { id: 'f1', airline: 'British Airways', flightNumber: 'BA 117', cabinClass: 'Economy', departureTime: '08:10', departureCode: 'LHR', departureCity: 'London', departureCountry: 'United Kingdom', arrivalTime: '11:05', arrivalCode: 'JFK', arrivalCity: 'New York', arrivalCountry: 'United States', duration: '7h 55m', price: 720 },
-  { id: 'f2', airline: 'Virgin Atlantic', flightNumber: 'VS 003', cabinClass: 'Business', departureTime: '11:00', departureCode: 'LHR', departureCity: 'London', departureCountry: 'United Kingdom', arrivalTime: '13:50', arrivalCode: 'JFK', arrivalCity: 'New York', arrivalCountry: 'United States', duration: '7h 50m', price: 1890 },
-  { id: 'f3', airline: 'Delta Air Lines', flightNumber: 'DL 007', cabinClass: 'Premium Economy', departureTime: '14:25', departureCode: 'LHR', departureCity: 'London', departureCountry: 'United Kingdom', arrivalTime: '17:15', arrivalCode: 'JFK', arrivalCity: 'New York', arrivalCountry: 'United States', duration: '7h 50m', price: 1140 },
-  { id: 'f4', airline: 'Air France', flightNumber: 'AF 0084', cabinClass: 'Economy', departureTime: '09:45', departureCode: 'CDG', departureCity: 'Paris', departureCountry: 'France', arrivalTime: '12:05', arrivalCode: 'SFO', arrivalCity: 'San Francisco', arrivalCountry: 'United States', duration: '11h 20m', price: 880 },
-  { id: 'f5', airline: 'Lufthansa', flightNumber: 'LH 454', cabinClass: 'Business', departureTime: '10:20', departureCode: 'FRA', departureCity: 'Frankfurt', departureCountry: 'Germany', arrivalTime: '14:05', arrivalCode: 'SFO', arrivalCity: 'San Francisco', arrivalCountry: 'United States', duration: '11h 45m', price: 2260 },
-  { id: 'f6', airline: 'KLM', flightNumber: 'KL 601', cabinClass: 'Economy', departureTime: '13:10', departureCode: 'AMS', departureCity: 'Amsterdam', departureCountry: 'Netherlands', arrivalTime: '14:45', arrivalCode: 'LAX', arrivalCity: 'Los Angeles', arrivalCountry: 'United States', duration: '11h 35m', price: 845 },
-  { id: 'f7', airline: 'Qatar Airways', flightNumber: 'QR 739', cabinClass: 'Economy', departureTime: '07:50', departureCode: 'DOH', departureCity: 'Doha', departureCountry: 'Qatar', arrivalTime: '15:10', arrivalCode: 'JNB', arrivalCity: 'Johannesburg', arrivalCountry: 'South Africa', duration: '8h 20m', price: 670 },
-  { id: 'f8', airline: 'Emirates', flightNumber: 'EK 761', cabinClass: 'Business', departureTime: '09:05', departureCode: 'DXB', departureCity: 'Dubai', departureCountry: 'United Arab Emirates', arrivalTime: '14:50', arrivalCode: 'JNB', arrivalCity: 'Johannesburg', arrivalCountry: 'South Africa', duration: '8h 45m', price: 1710 },
-  { id: 'f9', airline: 'Singapore Airlines', flightNumber: 'SQ 322', cabinClass: 'Economy', departureTime: '10:15', departureCode: 'SIN', departureCity: 'Singapore', departureCountry: 'Singapore', arrivalTime: '18:20', arrivalCode: 'LHR', arrivalCity: 'London', arrivalCountry: 'United Kingdom', duration: '13h 05m', price: 940 },
-  { id: 'f10', airline: 'ANA', flightNumber: 'NH 211', cabinClass: 'Business', departureTime: '11:35', departureCode: 'HND', departureCity: 'Tokyo', departureCountry: 'Japan', arrivalTime: '18:00', arrivalCode: 'LHR', arrivalCity: 'London', arrivalCountry: 'United Kingdom', duration: '14h 25m', price: 2380 },
-  { id: 'f11', airline: 'Cathay Pacific', flightNumber: 'CX 255', cabinClass: 'Premium Economy', departureTime: '08:30', departureCode: 'HKG', departureCity: 'Hong Kong', departureCountry: 'China (Hong Kong)', arrivalTime: '17:10', arrivalCode: 'LHR', arrivalCity: 'London', arrivalCountry: 'United Kingdom', duration: '13h 40m', price: 1320 },
-  { id: 'f12', airline: 'Qantas', flightNumber: 'QF 001', cabinClass: 'Economy', departureTime: '15:00', departureCode: 'SYD', departureCity: 'Sydney', departureCountry: 'Australia', arrivalTime: '06:10', arrivalCode: 'SIN', arrivalCity: 'Singapore', arrivalCountry: 'Singapore', duration: '8h 10m', price: 590 },
-  { id: 'f13', airline: 'Singapore Airlines', flightNumber: 'SQ 221', cabinClass: 'Business', departureTime: '08:55', departureCode: 'SIN', departureCity: 'Singapore', departureCountry: 'Singapore', arrivalTime: '15:15', arrivalCode: 'SYD', arrivalCity: 'Sydney', arrivalCountry: 'Australia', duration: '7h 20m', price: 1610 },
-  { id: 'f14', airline: 'Iberia', flightNumber: 'IB 6849', cabinClass: 'Economy', departureTime: '10:10', departureCode: 'MAD', departureCity: 'Madrid', departureCountry: 'Spain', arrivalTime: '13:20', arrivalCode: 'MEX', arrivalCity: 'Mexico City', arrivalCountry: 'Mexico', duration: '12h 10m', price: 810 },
-  { id: 'f15', airline: 'Aeromexico', flightNumber: 'AM 002', cabinClass: 'Business', departureTime: '16:40', departureCode: 'MEX', departureCity: 'Mexico City', departureCountry: 'Mexico', arrivalTime: '10:15', arrivalCode: 'MAD', arrivalCity: 'Madrid', arrivalCountry: 'Spain', duration: '10h 35m', price: 1930 },
-  { id: 'f16', airline: 'Turkish Airlines', flightNumber: 'TK 079', cabinClass: 'Economy', departureTime: '07:25', departureCode: 'IST', departureCity: 'Istanbul', departureCountry: 'Turkey', arrivalTime: '17:20', arrivalCode: 'SFO', arrivalCity: 'San Francisco', arrivalCountry: 'United States', duration: '12h 55m', price: 860 },
-  { id: 'f17', airline: 'Etihad Airways', flightNumber: 'EY 021', cabinClass: 'Business', departureTime: '10:35', departureCode: 'AUH', departureCity: 'Abu Dhabi', departureCountry: 'United Arab Emirates', arrivalTime: '17:55', arrivalCode: 'JFK', arrivalCity: 'New York', arrivalCountry: 'United States', duration: '14h 20m', price: 2110 },
-  { id: 'f18', airline: 'LATAM', flightNumber: 'LA 800', cabinClass: 'Economy', departureTime: '09:00', departureCode: 'SCL', departureCity: 'Santiago', departureCountry: 'Chile', arrivalTime: '13:35', arrivalCode: 'AKL', arrivalCity: 'Auckland', arrivalCountry: 'New Zealand', duration: '11h 35m', price: 770 },
-  { id: 'f19', airline: 'Air New Zealand', flightNumber: 'NZ 040', cabinClass: 'Premium Economy', departureTime: '16:20', departureCode: 'AKL', departureCity: 'Auckland', departureCountry: 'New Zealand', arrivalTime: '11:45', arrivalCode: 'SCL', arrivalCity: 'Santiago', arrivalCountry: 'Chile', duration: '11h 25m', price: 1240 },
-  { id: 'f20', airline: 'South African Airways', flightNumber: 'SA 286', cabinClass: 'Economy', departureTime: '12:45', departureCode: 'JNB', departureCity: 'Johannesburg', departureCountry: 'South Africa', arrivalTime: '22:20', arrivalCode: 'HKG', arrivalCity: 'Hong Kong', arrivalCountry: 'China (Hong Kong)', duration: '11h 35m', price: 820 },
-  { id: 'f21', airline: 'Korean Air', flightNumber: 'KE 901', cabinClass: 'Business', departureTime: '08:05', departureCode: 'ICN', departureCity: 'Seoul', departureCountry: 'South Korea', arrivalTime: '06:10', arrivalCode: 'CDG', arrivalCity: 'Paris', arrivalCountry: 'France', duration: '13h 05m', price: 2020 },
-  { id: 'f22', airline: 'Thai Airways', flightNumber: 'TG 910', cabinClass: 'Economy', departureTime: '09:40', departureCode: 'BKK', departureCity: 'Bangkok', departureCountry: 'Thailand', arrivalTime: '17:35', arrivalCode: 'LHR', arrivalCity: 'London', arrivalCountry: 'United Kingdom', duration: '12h 55m', price: 860 },
-  { id: 'f23', airline: 'Japan Airlines', flightNumber: 'JL 043', cabinClass: 'Economy', departureTime: '12:15', departureCode: 'HND', departureCity: 'Tokyo', departureCountry: 'Japan', arrivalTime: '11:45', arrivalCode: 'CDG', arrivalCity: 'Paris', arrivalCountry: 'France', duration: '14h 30m', price: 930 },
-  { id: 'f24', airline: 'United Airlines', flightNumber: 'UA 870', cabinClass: 'Business', departureTime: '17:30', departureCode: 'SFO', departureCity: 'San Francisco', departureCountry: 'United States', arrivalTime: '20:35', arrivalCode: 'SYD', arrivalCity: 'Sydney', arrivalCountry: 'Australia', duration: '15h 05m', price: 2460 },
-];
-
-const HOTEL_OPTIONS: HotelOption[] = [
-  { id: 'h1', name: 'Shinjuku Skylight Hotel', area: 'Shinjuku', city: 'Tokyo', country: 'Japan', roomType: 'City View King', pricePerNight: 340 },
-  { id: 'h2', name: 'Manhattan Park Lane', area: 'Midtown', city: 'New York', country: 'United States', roomType: 'Deluxe Queen', pricePerNight: 410 },
-  { id: 'h3', name: 'Le Marais Belle Maison', area: 'Le Marais', city: 'Paris', country: 'France', roomType: 'Boutique Suite', pricePerNight: 360 },
-  { id: 'h4', name: 'Marina Bay Crest', area: 'Marina Bay', city: 'Singapore', country: 'Singapore', roomType: 'Harbor View', pricePerNight: 380 },
-  { id: 'h5', name: 'Soho Central Loft', area: 'Soho', city: 'London', country: 'United Kingdom', roomType: 'Modern King', pricePerNight: 335 },
-  { id: 'h6', name: 'Opera District Grand', area: '9th Arr.', city: 'Paris', country: 'France', roomType: 'Executive Twin', pricePerNight: 305 },
-  { id: 'h7', name: 'Harbourfront Skyline', area: 'Central', city: 'Hong Kong', country: 'China (Hong Kong)', roomType: 'Skyline Suite', pricePerNight: 395 },
-  { id: 'h8', name: 'Santa Monica Breeze', area: 'Santa Monica', city: 'Los Angeles', country: 'United States', roomType: 'Ocean Double', pricePerNight: 320 },
-  { id: 'h9', name: 'Ginza Prestige Suites', area: 'Ginza', city: 'Tokyo', country: 'Japan', roomType: 'Executive Suite', pricePerNight: 420 },
-  { id: 'h10', name: 'Dubai Creek Royale', area: 'Deira', city: 'Dubai', country: 'United Arab Emirates', roomType: 'Premium King', pricePerNight: 290 },
-  { id: 'h11', name: 'Sants Design House', area: 'Sants', city: 'Barcelona', country: 'Spain', roomType: 'Studio Twin', pricePerNight: 240 },
-  { id: 'h12', name: 'Trastevere Garden Inn', area: 'Trastevere', city: 'Rome', country: 'Italy', roomType: 'Garden Suite', pricePerNight: 265 },
-  { id: 'h13', name: 'Myeongdong Urban Stay', area: 'Myeongdong', city: 'Seoul', country: 'South Korea', roomType: 'Business King', pricePerNight: 230 },
-  { id: 'h14', name: 'Asakusa Heritage Inn', area: 'Asakusa', city: 'Tokyo', country: 'Japan', roomType: 'Deluxe Twin', pricePerNight: 260 },
-  { id: 'h15', name: 'Bondi Shore Retreat', area: 'Bondi', city: 'Sydney', country: 'Australia', roomType: 'Balcony Room', pricePerNight: 310 },
-  { id: 'h16', name: 'Canal Ring Boutique', area: 'Canal Ring', city: 'Amsterdam', country: 'Netherlands', roomType: 'Canal View', pricePerNight: 295 },
-  { id: 'h17', name: 'Namba Neon Hotel', area: 'Namba', city: 'Osaka', country: 'Japan', roomType: 'Compact Queen', pricePerNight: 205 },
-  { id: 'h18', name: 'Recoleta Heritage House', area: 'Recoleta', city: 'Buenos Aires', country: 'Argentina', roomType: 'Classic King', pricePerNight: 215 },
-  { id: 'h19', name: 'Copacabana Vista', area: 'Copacabana', city: 'Rio de Janeiro', country: 'Brazil', roomType: 'Sea View King', pricePerNight: 245 },
-  { id: 'h20', name: 'Shibuya Nexus Hotel', area: 'Shibuya', city: 'Tokyo', country: 'Japan', roomType: 'Modern King', pricePerNight: 330 },
-  { id: 'h21', name: 'Old Quarter Residence', area: 'Old Quarter', city: 'Hanoi', country: 'Vietnam', roomType: 'Premier Double', pricePerNight: 155 },
-  { id: 'h22', name: 'V&A Waterfront Suites', area: 'Waterfront', city: 'Cape Town', country: 'South Africa', roomType: 'Bay Suite', pricePerNight: 270 },
-  { id: 'h23', name: 'Sultanahmet Courtyard', area: 'Sultanahmet', city: 'Istanbul', country: 'Turkey', roomType: 'Deluxe Room', pricePerNight: 185 },
-  { id: 'h24', name: 'Kensington Imperial House', area: 'Kensington', city: 'London', country: 'United Kingdom', roomType: 'Premier Suite', pricePerNight: 430 },
-];
-
-const CAR_OPTIONS: CarOption[] = [
-  { id: 'c1', name: 'Toyota Alphard', type: 'Premium Van', city: 'Tokyo', country: 'Japan', transmission: 'Automatic', pricePerDay: 145 },
-  { id: 'c2', name: 'Lexus ES', type: 'Luxury Sedan', city: 'Dubai', country: 'United Arab Emirates', transmission: 'Automatic', pricePerDay: 165 },
-  { id: 'c3', name: 'Nissan Serena', type: 'Family MPV', city: 'Osaka', country: 'Japan', transmission: 'Automatic', pricePerDay: 118 },
-  { id: 'c4', name: 'Honda Stepwgn', type: 'Family Van', city: 'Seoul', country: 'South Korea', transmission: 'Automatic', pricePerDay: 112 },
-  { id: 'c5', name: 'Mazda CX-5', type: 'SUV', city: 'Auckland', country: 'New Zealand', transmission: 'Automatic', pricePerDay: 126 },
-  { id: 'c6', name: 'Subaru Forester', type: 'SUV', city: 'Vancouver', country: 'Canada', transmission: 'Automatic', pricePerDay: 132 },
-  { id: 'c7', name: 'Toyota Yaris', type: 'Compact', city: 'Barcelona', country: 'Spain', transmission: 'Automatic', pricePerDay: 74 },
-  { id: 'c8', name: 'Honda Fit', type: 'Compact', city: 'Bangkok', country: 'Thailand', transmission: 'Automatic', pricePerDay: 70 },
-  { id: 'c9', name: 'Nissan Note', type: 'Compact Hybrid', city: 'Singapore', country: 'Singapore', transmission: 'Automatic', pricePerDay: 78 },
-  { id: 'c10', name: 'Toyota Prius', type: 'Hybrid Sedan', city: 'San Francisco', country: 'United States', transmission: 'Automatic', pricePerDay: 92 },
-  { id: 'c11', name: 'Lexus RX', type: 'Luxury SUV', city: 'Los Angeles', country: 'United States', transmission: 'Automatic', pricePerDay: 172 },
-  { id: 'c12', name: 'BMW 3 Series', type: 'Executive Sedan', city: 'Munich', country: 'Germany', transmission: 'Automatic', pricePerDay: 154 },
-  { id: 'c13', name: 'Mercedes C-Class', type: 'Executive Sedan', city: 'Frankfurt', country: 'Germany', transmission: 'Automatic', pricePerDay: 162 },
-  { id: 'c14', name: 'Toyota HiAce', type: 'Group Van', city: 'Cape Town', country: 'South Africa', transmission: 'Automatic', pricePerDay: 149 },
-  { id: 'c15', name: 'Mitsubishi Delica', type: 'Adventure Van', city: 'Queenstown', country: 'New Zealand', transmission: 'Automatic', pricePerDay: 138 },
-  { id: 'c16', name: 'Suzuki Swift', type: 'Economy', city: 'Rome', country: 'Italy', transmission: 'Automatic', pricePerDay: 66 },
-  { id: 'c17', name: 'Daihatsu Rocky', type: 'Compact SUV', city: 'Bali', country: 'Indonesia', transmission: 'Automatic', pricePerDay: 88 },
-  { id: 'c18', name: 'Audi A4', type: 'Premium Sedan', city: 'Paris', country: 'France', transmission: 'Automatic', pricePerDay: 168 },
-  { id: 'c19', name: 'Tesla Model 3', type: 'Electric Sedan', city: 'Amsterdam', country: 'Netherlands', transmission: 'Automatic', pricePerDay: 176 },
-  { id: 'c20', name: 'Nissan Sakura EV', type: 'Electric Mini', city: 'Kyoto', country: 'Japan', transmission: 'Automatic', pricePerDay: 90 },
-  { id: 'c21', name: 'Toyota Crown', type: 'Luxury Sedan', city: 'London', country: 'United Kingdom', transmission: 'Automatic', pricePerDay: 171 },
-  { id: 'c22', name: 'Mazda 3', type: 'Compact Sedan', city: 'Mexico City', country: 'Mexico', transmission: 'Automatic', pricePerDay: 84 },
-  { id: 'c23', name: 'Toyota Land Cruiser', type: 'Full-Size SUV', city: 'Doha', country: 'Qatar', transmission: 'Automatic', pricePerDay: 198 },
-  { id: 'c24', name: 'Volvo XC60', type: 'Premium SUV', city: 'Stockholm', country: 'Sweden', transmission: 'Automatic', pricePerDay: 179 },
-];
-
-const ACTIVITY_OPTIONS: ActivityOption[] = [
-  { id: 'a1', name: 'Mt. Fuji Private Tour', details: 'Full day with private driver', city: 'Tokyo', country: 'Japan', price: 320 },
-  { id: 'a2', name: 'Broadway Night Pass', details: 'Top musicals evening bundle', city: 'New York', country: 'United States', price: 180 },
-  { id: 'a3', name: 'Louvre After Hours', details: 'Late-entry guided art route', city: 'Paris', country: 'France', price: 95 },
-  { id: 'a4', name: 'Dubai Desert Dune Safari', details: 'Sunset camp and dinner', city: 'Dubai', country: 'United Arab Emirates', price: 140 },
-  { id: 'a5', name: 'Barcelona Gaudi Walk', details: 'Sagrada + Gothic Quarter', city: 'Barcelona', country: 'Spain', price: 78 },
-  { id: 'a6', name: 'Seoul K-Food Night Tour', details: 'Street food tasting trail', city: 'Seoul', country: 'South Korea', price: 88 },
-  { id: 'a7', name: 'Sydney Harbour Bridge Climb', details: 'Guided summit climb', city: 'Sydney', country: 'Australia', price: 210 },
-  { id: 'a8', name: 'Amsterdam Canal Evening Cruise', details: 'Historic district by boat', city: 'Amsterdam', country: 'Netherlands', price: 52 },
-  { id: 'a9', name: 'Rome Colosseum Underground', details: 'Restricted area access', city: 'Rome', country: 'Italy', price: 115 },
-  { id: 'a10', name: 'Singapore Hawker Masterclass', details: 'Cook and taste workshop', city: 'Singapore', country: 'Singapore', price: 105 },
-  { id: 'a11', name: 'Cape Town Peninsula Drive', details: 'Scenic coastal day trip', city: 'Cape Town', country: 'South Africa', price: 170 },
-  { id: 'a12', name: 'Istanbul Bosphorus Twilight Cruise', details: 'Sunset strait journey', city: 'Istanbul', country: 'Turkey', price: 84 },
-  { id: 'a13', name: 'Rio Samba Experience', details: 'Dance lesson + live show', city: 'Rio de Janeiro', country: 'Brazil', price: 96 },
-  { id: 'a14', name: 'Mexico City Frida & Coyoacan', details: 'Museum and neighborhood walk', city: 'Mexico City', country: 'Mexico', price: 74 },
-  { id: 'a15', name: 'Bangkok Temple and Canal Mix', details: 'Longtail boat + temples', city: 'Bangkok', country: 'Thailand', price: 69 },
-  { id: 'a16', name: 'Auckland Volcano Trails', details: 'Half-day volcanic hike', city: 'Auckland', country: 'New Zealand', price: 82 },
-  { id: 'a17', name: 'London Royal Landmarks Tour', details: 'Westminster to Tower route', city: 'London', country: 'United Kingdom', price: 76 },
-  { id: 'a18', name: 'Hong Kong Peak & Markets', details: 'Tram ride and market crawl', city: 'Hong Kong', country: 'China (Hong Kong)', price: 89 },
-  { id: 'a19', name: 'Santiago Vineyard Escape', details: 'Andes-side wine tasting', city: 'Santiago', country: 'Chile', price: 132 },
-  { id: 'a20', name: 'Hanoi Old Quarter Cyclo Ride', details: 'Street culture immersion', city: 'Hanoi', country: 'Vietnam', price: 43 },
-  { id: 'a21', name: 'Doha Museum Triangle', details: 'Museum of Islamic Art route', city: 'Doha', country: 'Qatar', price: 55 },
-  { id: 'a22', name: 'San Francisco Alcatraz Combo', details: 'Ferry plus audio island tour', city: 'San Francisco', country: 'United States', price: 98 },
-  { id: 'a23', name: 'Munich Beer Hall Heritage', details: 'Historic brewing district walk', city: 'Munich', country: 'Germany', price: 66 },
-  { id: 'a24', name: 'Osaka Dotonbori Food Run', details: 'Night bites and neon alleys', city: 'Osaka', country: 'Japan', price: 79 },
-];
+interface PlanPageProps {
+  userEmail?: string;
+  onNavigate?: (page: string) => void;
+  onConfirmSelection?: (payload: {
+    outbound: FlightOffer;
+    inbound: FlightOffer;
+    totalPrice: number;
+    currency: string;
+  }) => void;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  onClearChat?: () => void;
+}
 
 const PLAN_STEPS = [
   { number: '01', label: 'Search' },
@@ -226,349 +99,761 @@ const PLAN_STEPS = [
   { number: '03', label: 'Confirm' },
 ];
 
-const COUNTRY_ALIASES: Record<string, string> = {
-  us: 'United States',
-  usa: 'United States',
-  america: 'United States',
-  uk: 'United Kingdom',
-  uae: 'United Arab Emirates',
+const TRAVEL_STYLES: TravelStyleOption[] = [
+  {
+    title: 'Luxury',
+    tag: 'Luxury',
+    tagVariant: 'curated',
+    description: 'High-end hotels, private transfers, and signature dining.',
+    image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80',
+    suggestions: [
+      {
+        city: 'Paris, France',
+        idea: 'Private Seine dinner cruise and couture shopping concierge.',
+        image: 'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=900&q=80',
+      },
+      {
+        city: 'Dubai, UAE',
+        idea: 'Skyline penthouse stay with desert sunset private safari.',
+        image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=900&q=80',
+      },
+      {
+        city: 'Milan, Italy',
+        idea: 'Design district tour with Michelin tasting itinerary.',
+        image: 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?auto=format&fit=crop&w=900&q=80',
+      },
+    ],
+    followUpQuestions: [
+      'What is your ideal hotel budget per night in USD?',
+      'Do you prefer private experiences or iconic landmarks?',
+      'How many nights are you planning for this trip?',
+    ],
+  },
+  {
+    title: 'Elite',
+    tag: 'Elite',
+    tagVariant: 'recommended',
+    description: 'Premium comfort, seamless service, and VIP access.',
+    image: 'https://images.unsplash.com/photo-1507608616759-54f48f0af0ee?auto=format&fit=crop&w=900&q=80',
+    suggestions: [
+      {
+        city: 'Tokyo, Japan',
+        idea: 'Executive lounge access and curated omakase reservations.',
+        image: 'https://images.unsplash.com/photo-1536098561742-ca998e48cbcc?auto=format&fit=crop&w=900&q=80',
+      },
+      {
+        city: 'Zurich, Switzerland',
+        idea: 'Lake-view suites and private alpine rail experiences.',
+        image: 'https://images.unsplash.com/photo-1521292270410-a8c4d716d518?auto=format&fit=crop&w=900&q=80',
+      },
+      {
+        city: 'Singapore',
+        idea: 'Luxury city stay with skyline dining and private guide.',
+        image: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&w=900&q=80',
+      },
+    ],
+    followUpQuestions: [
+      'Would you like business-class flights, premium economy, or either?',
+      'Do you prefer a fast-paced city schedule or a balanced pace?',
+      'Any must-have experiences you want VIP access for?',
+    ],
+  },
+  {
+    title: 'Urban Adventure',
+    tag: 'Selected',
+    tagVariant: 'selected',
+    description: 'Street culture, nightlife, local eats, and city energy.',
+    image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=900&q=80',
+    suggestions: [
+      {
+        city: 'Seoul, South Korea',
+        idea: 'Night markets, cafe hopping, and hidden neighborhood bars.',
+        image: 'https://images.unsplash.com/photo-1538485399081-7191377e8241?auto=format&fit=crop&w=900&q=80',
+      },
+      {
+        city: 'New York, USA',
+        idea: 'Food crawl, rooftop music nights, and indie art spaces.',
+        image: 'https://images.unsplash.com/photo-1518391846015-55a9cc003b25?auto=format&fit=crop&w=900&q=80',
+      },
+      {
+        city: 'Barcelona, Spain',
+        idea: 'Street architecture walks, tapas routes, and beach evenings.',
+        image: 'https://images.unsplash.com/photo-1543785734-4b45d0f5b3ac?auto=format&fit=crop&w=900&q=80',
+      },
+    ],
+    followUpQuestions: [
+      'Do you want more food-focused plans, nightlife, or cultural spots?',
+      'What daily pace do you like: packed days or flexible exploration?',
+      'Any neighborhoods or city vibe you want me to prioritize?',
+    ],
+  },
+  {
+    title: 'Zen Nature',
+    tag: 'Escape',
+    tagVariant: 'escape',
+    description: 'Calm landscapes, wellness stays, and mindful experiences.',
+    image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80',
+    suggestions: [
+      {
+        city: 'Kyoto, Japan',
+        idea: 'Temple mornings, tea ceremony, and peaceful garden paths.',
+        image: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=900&q=80',
+      },
+      {
+        city: 'Queenstown, New Zealand',
+        idea: 'Lakeside lodges, gentle trails, and scenic wellness retreats.',
+        image: 'https://images.unsplash.com/photo-1464822759844-d150baec0494?auto=format&fit=crop&w=900&q=80',
+      },
+      {
+        city: 'Bali, Indonesia',
+        idea: 'Jungle sanctuary stays, yoga sessions, and waterfall walks.',
+        image: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=900&q=80',
+      },
+    ],
+    followUpQuestions: [
+      'Do you prefer mountain, forest, beach, or mixed nature settings?',
+      'Would you like wellness activities included such as yoga or spa?',
+      'Are you looking for quiet relaxation or light adventure too?',
+    ],
+  },
+];
+
+const normalizeSelectedStyle = (value: string | null | undefined): string => {
+  if (!value) return 'Urban Adventure';
+  if (value === 'Luxury Elite') return 'Luxury';
+  return TRAVEL_STYLES.some((s) => s.title === value) ? value : 'Urban Adventure';
 };
 
-const formatChoiceList = <T,>(items: T[], toLine: (item: T, index: number) => string, limit = 12): string => {
-  const head = items.slice(0, limit).map((item, idx) => toLine(item, idx + 1)).join('\n');
-  if (items.length <= limit) return head;
-  return `${head}\n...and ${items.length - limit} more options are available in the page list.`;
+const getStyleByTitle = (title: string): TravelStyleOption =>
+  TRAVEL_STYLES.find((s) => s.title === title) ?? TRAVEL_STYLES[2];
+
+const LOCATION_TO_IATA: Record<string, string> = {
+  tokyo: 'HND',
+  haneda: 'HND',
+  hnd: 'HND',
+  narita: 'NRT',
+  nrt: 'NRT',
+  osaka: 'KIX',
+  kix: 'KIX',
+  itami: 'ITM',
+  itm: 'ITM',
+  sapporo: 'CTS',
+  cts: 'CTS',
+  fukuoka: 'FUK',
+  fuk: 'FUK',
+  dallas: 'DFW',
+  dfw: 'DFW',
+  london: 'LHR',
+  lhr: 'LHR',
+  newyork: 'JFK',
+  'new york': 'JFK',
+  jfk: 'JFK',
+  losangeles: 'LAX',
+  'los angeles': 'LAX',
+  lax: 'LAX',
+  sanfrancisco: 'SFO',
+  'san francisco': 'SFO',
+  sfo: 'SFO',
 };
 
-const normalizeLocation = (value: string): string => value.toLowerCase().trim();
-
-const extractLocationFromText = (text: string): string | null => {
-  const normalized = text.toLowerCase().trim();
-  if (!normalized) return null;
-
-  const alias = COUNTRY_ALIASES[normalized];
-  if (alias) return alias;
-
-  const locationTokens = Array.from(new Set(FLIGHT_OPTIONS.flatMap((f) => [
-    f.departureCountry,
-    f.arrivalCountry,
-    f.departureCity,
-    f.arrivalCity,
-    f.departureCode,
-    f.arrivalCode,
-  ])));
-
-  const exact = locationTokens.find((token) => token.toLowerCase() === normalized);
-  if (exact) return exact;
-
-  const included = locationTokens.find((token) => normalized.includes(token.toLowerCase()));
-  if (included) return included;
-
-  const aliasIncluded = Object.entries(COUNTRY_ALIASES).find(([key]) => normalized.includes(key));
-  if (aliasIncluded) return aliasIncluded[1];
-
-  return null;
+const COUNTRY_TO_AIRPORTS: Record<string, string[]> = {
+  japan: ['HND', 'NRT', 'KIX', 'ITM', 'CTS', 'FUK'],
+  jp: ['HND', 'NRT', 'KIX', 'ITM', 'CTS', 'FUK'],
 };
 
-const matchesArrivalLocation = (flight: FlightOption, location: string): boolean => {
-  const q = normalizeLocation(location);
-  return [flight.arrivalCountry, flight.arrivalCity, flight.arrivalCode].some((value) => normalizeLocation(value) === q);
+const JAPAN_AIRPORTS = COUNTRY_TO_AIRPORTS.japan;
+
+const JAPAN_ACTIVITIES_BY_STYLE: Record<string, ActivityOption[]> = {
+  Luxury: [
+    {
+      id: 'lux-jp-1',
+      title: 'Tokyo Private Omakase Evening',
+      description: 'Chef-curated multi-course dinner with private host service.',
+      price: 420,
+      image: 'https://images.unsplash.com/photo-1553621042-f6e147245754?auto=format&fit=crop&w=900&q=80',
+      city: 'Tokyo',
+    },
+    {
+      id: 'lux-jp-2',
+      title: 'Kyoto Temple & Tea Concierge Day',
+      description: 'Private car, tea master session, and curated heritage route.',
+      price: 360,
+      image: 'https://images.unsplash.com/photo-1528164344705-47542687000d?auto=format&fit=crop&w=900&q=80',
+      city: 'Kyoto',
+    },
+    {
+      id: 'lux-jp-3',
+      title: 'Hakone Onsen Retreat Package',
+      description: 'Luxury ryokan access with spa credit and scenic rail pass.',
+      price: 310,
+      image: 'https://images.unsplash.com/photo-1526481280695-3c46953b95d8?auto=format&fit=crop&w=900&q=80',
+      city: 'Hakone',
+    },
+  ],
+  Elite: [
+    {
+      id: 'elite-jp-1',
+      title: 'Tokyo Skyline Helicopter Circuit',
+      description: 'Premium aerial city tour with lounge transfer included.',
+      price: 520,
+      image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=900&q=80',
+      city: 'Tokyo',
+    },
+    {
+      id: 'elite-jp-2',
+      title: 'Shinkansen First-Class Day Escape',
+      description: 'Reserved first-class rail and concierge-planned city stop.',
+      price: 260,
+      image: 'https://images.unsplash.com/photo-1477901492169-d59e6428fc90?auto=format&fit=crop&w=900&q=80',
+      city: 'Osaka',
+    },
+    {
+      id: 'elite-jp-3',
+      title: 'VIP TeamLab + Fine Dining Night',
+      description: 'Priority entry plus post-exhibit premium dining reservation.',
+      price: 230,
+      image: 'https://images.unsplash.com/photo-1528360983277-13d401cdc186?auto=format&fit=crop&w=900&q=80',
+      city: 'Tokyo',
+    },
+  ],
+  'Urban Adventure': [
+    {
+      id: 'urban-jp-1',
+      title: 'Shibuya Street Food Crawl',
+      description: 'Guided late-night local eats and hidden alley spots.',
+      price: 95,
+      image: 'https://images.unsplash.com/photo-1542051841857-5f90071e7989?auto=format&fit=crop&w=900&q=80',
+      city: 'Tokyo',
+    },
+    {
+      id: 'urban-jp-2',
+      title: 'Osaka Nightlife District Pass',
+      description: 'Bar-hop entry bundle with local host recommendations.',
+      price: 120,
+      image: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=900&q=80',
+      city: 'Osaka',
+    },
+    {
+      id: 'urban-jp-3',
+      title: 'Harajuku Culture + Vintage Route',
+      description: 'DIY style walk, indie shops, and local dessert stop.',
+      price: 75,
+      image: 'https://images.unsplash.com/photo-1513407030348-c983a97b98d8?auto=format&fit=crop&w=900&q=80',
+      city: 'Tokyo',
+    },
+  ],
+  'Zen Nature': [
+    {
+      id: 'zen-jp-1',
+      title: 'Arashiyama Bamboo + River Walk',
+      description: 'Calm guided morning route with tea break included.',
+      price: 85,
+      image: 'https://images.unsplash.com/photo-1524413840807-0c3cb6fa808d?auto=format&fit=crop&w=900&q=80',
+      city: 'Kyoto',
+    },
+    {
+      id: 'zen-jp-2',
+      title: 'Nikko Forest Shrine Retreat',
+      description: 'Nature and heritage day tour with slow-paced schedule.',
+      price: 140,
+      image: 'https://images.unsplash.com/photo-1568084680786-a84f91d1153c?auto=format&fit=crop&w=900&q=80',
+      city: 'Nikko',
+    },
+    {
+      id: 'zen-jp-3',
+      title: 'Lake Kawaguchi Reflection Day',
+      description: 'Scenic lakeside route, gentle hike, and onsen stop.',
+      price: 160,
+      image: 'https://images.unsplash.com/photo-1480796927426-f609979314bd?auto=format&fit=crop&w=900&q=80',
+      city: 'Yamanashi',
+    },
+  ],
 };
 
-const matchesDepartureLocation = (flight: FlightOption, location: string): boolean => {
-  const q = normalizeLocation(location);
-  return [flight.departureCountry, flight.departureCity, flight.departureCode].some((value) => normalizeLocation(value) === q);
+const isJapanRoute = (targets: string[]): boolean =>
+  targets.length > 0 && targets.every((t) => JAPAN_AIRPORTS.includes(t));
+
+const getStyleActivities = (styleTitle: string, targets: string[]): ActivityOption[] => {
+  if (isJapanRoute(targets)) {
+    return JAPAN_ACTIVITIES_BY_STYLE[styleTitle] ?? [];
+  }
+
+  // Fallback mock activities (non-Japan)
+  return [
+    {
+      id: `fallback-${styleTitle}-1`,
+      title: `${styleTitle} City Highlights`,
+      description: 'A curated starter experience based on your selected travel style.',
+      price: 110,
+      image: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=900&q=80',
+      city: 'Destination City',
+    },
+    {
+      id: `fallback-${styleTitle}-2`,
+      title: `${styleTitle} Premium Day Plan`,
+      description: 'Flexible day plan with timed recommendations and local spots.',
+      price: 165,
+      image: 'https://images.unsplash.com/photo-1503220317375-aaad61436b1b?auto=format&fit=crop&w=900&q=80',
+      city: 'Destination City',
+    },
+  ];
 };
 
-function NoHotelSlot() {
-  return (
-    <div
-      style={{
-        border: '1.5px dashed var(--color-border-light-strong)',
-        borderRadius: 'var(--radius-lg)',
-        padding: '14px',
-        textAlign: 'center',
-        color: 'var(--color-text-dark-muted)',
-        fontSize: 'var(--text-xs)',
-        fontWeight: 'var(--weight-semibold)',
-        letterSpacing: 'var(--tracking-wider)',
-        textTransform: 'uppercase',
-      }}
-    >
-      No Hotel Selected
-    </div>
+const PlaneIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+);
+
+const SmallPlaneIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+  </svg>
+);
+
+const normalizeKey = (v: string): string => v.toLowerCase().replace(/[^a-z]/g, '');
+
+const resolveIata = (raw: string): string | null => {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const asIata = trimmed.toUpperCase();
+  if (/^[A-Z]{3}$/.test(asIata)) return asIata;
+
+  const normalized = normalizeKey(trimmed);
+  const direct = LOCATION_TO_IATA[trimmed.toLowerCase()] || LOCATION_TO_IATA[normalized];
+  if (direct) return direct;
+
+  const entry = Object.entries(LOCATION_TO_IATA).find(([key]) => normalizeKey(key) === normalized);
+  return entry ? entry[1] : null;
+};
+
+const resolveDestinationTargets = (raw: string): string[] | null => {
+  const normalized = normalizeKey(raw);
+  const countryTargets = COUNTRY_TO_AIRPORTS[raw.toLowerCase()] || COUNTRY_TO_AIRPORTS[normalized];
+  if (countryTargets) return [...countryTargets];
+
+  const single = resolveIata(raw);
+  return single ? [single] : null;
+};
+
+const formatTime = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+const formatDuration = (minutes: number): string => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+};
+
+const toIsoDate = (d: Date): string => {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const loadPlanState = (): PersistedPlanState | null => {
+  try {
+    const raw = sessionStorage.getItem(PLAN_STATE_KEY);
+    return raw ? (JSON.parse(raw) as PersistedPlanState) : null;
+  } catch {
+    return null;
+  }
+};
+
+export default function PlanPage({ userEmail, onNavigate, onConfirmSelection, messages, setMessages, onClearChat }: PlanPageProps) {
+  type AwaitingField = 'destination' | 'origin' | 'return' | null;
+
+  const persisted = loadPlanState();
+
+  const [selectedStyle, setSelectedStyle] = useState<string>(normalizeSelectedStyle(persisted?.selectedStyle));
+  const [origin, setOrigin] = useState<string | null>(persisted?.origin ?? null);
+  const [destination, setDestination] = useState<string | null>(persisted?.destination ?? null);
+  const [destinationTargets, setDestinationTargets] = useState<string[]>(persisted?.destinationTargets ?? (persisted?.destination ? [persisted.destination] : []));
+  const [returnTo, setReturnTo] = useState<string | null>(persisted?.returnTo ?? null);
+  const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>(persisted?.selectedActivityIds ?? []);
+  const [activityPromptKey, setActivityPromptKey] = useState<string | null>(null);
+  const [awaitingField, setAwaitingField] = useState<AwaitingField>(null);
+  const [styleFollowupActive, setStyleFollowupActive] = useState(false);
+  const [styleFollowupIndex, setStyleFollowupIndex] = useState(-1);
+  const [styleAnswers, setStyleAnswers] = useState<string[]>([]);
+  const [outboundFlights, setOutboundFlights] = useState<FlightOffer[]>(persisted?.outboundFlights ?? []);
+  const [inboundFlights, setInboundFlights] = useState<FlightOffer[]>(persisted?.inboundFlights ?? []);
+  const [selectedOutboundId, setSelectedOutboundId] = useState<string | null>(persisted?.selectedOutboundId ?? null);
+  const [selectedInboundId, setSelectedInboundId] = useState<string | null>(persisted?.selectedInboundId ?? null);
+  const [selectionGuidanceShown, setSelectionGuidanceShown] = useState(false);
+  const [loadingFlights, setLoadingFlights] = useState(false);
+  const [flightError, setFlightError] = useState<string | null>(null);
+
+  const selectedOutbound = useMemo(
+    () => outboundFlights.find((f) => f.offer_id === selectedOutboundId) ?? null,
+    [outboundFlights, selectedOutboundId],
   );
-}
 
-interface PlanPageProps {
-  userEmail?: string;
-  onNavigate?: (page: string) => void;
-  messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
-  onClearChat?: () => void;
-}
+  const selectedInbound = useMemo(
+    () => inboundFlights.find((f) => f.offer_id === selectedInboundId) ?? null,
+    [inboundFlights, selectedInboundId],
+  );
 
-export default function PlanPage({ userEmail, onNavigate, messages, setMessages, onClearChat }: PlanPageProps) {
-  const [context, setContext] = useState<PlannerContext>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        return {
-          selectedStyle: 'Urban Adventure',
-          outboundCountry: null,
-          inboundCountry: null,
-          selectedFlightId: null,
-          selectedHotelId: null,
-          selectedCarId: null,
-          selectedActivityIds: [],
-          step: 'route',
-        };
-      }
-      return JSON.parse(raw) as PlannerContext;
-    } catch {
-      return {
-        selectedStyle: 'Urban Adventure',
-        outboundCountry: null,
-        inboundCountry: null,
-        selectedFlightId: null,
-        selectedHotelId: null,
-        selectedCarId: null,
-        selectedActivityIds: [],
-        step: 'route',
-      };
-    }
-  });
+  const availableActivities = useMemo(
+    () => getStyleActivities(selectedStyle, destinationTargets),
+    [selectedStyle, destinationTargets],
+  );
+
+  const selectedActivities = useMemo(
+    () => availableActivities.filter((activity) => selectedActivityIds.includes(activity.id)),
+    [availableActivities, selectedActivityIds],
+  );
+
+  const activitiesTotal = selectedActivities.reduce((sum, activity) => sum + activity.price, 0);
+
+  const totalCost = (selectedOutbound?.price_per_person ?? 0) + (selectedInbound?.price_per_person ?? 0) + activitiesTotal;
+  const selectedStyleConfig = useMemo(() => getStyleByTitle(selectedStyle), [selectedStyle]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(context));
-  }, [context]);
-
-  const selectedFlight = useMemo(
-    () => FLIGHT_OPTIONS.find((f) => f.id === context.selectedFlightId) ?? null,
-    [context.selectedFlightId],
-  );
-  const selectedHotel = useMemo(
-    () => HOTEL_OPTIONS.find((h) => h.id === context.selectedHotelId) ?? null,
-    [context.selectedHotelId],
-  );
-  const selectedCar = useMemo(
-    () => CAR_OPTIONS.find((c) => c.id === context.selectedCarId) ?? null,
-    [context.selectedCarId],
-  );
-  const selectedActivities = useMemo(
-    () => ACTIVITY_OPTIONS.filter((a) => context.selectedActivityIds.includes(a.id)),
-    [context.selectedActivityIds],
-  );
-
-  const outboundFlightOptions = useMemo(() => {
-    const outbound = context.outboundCountry;
-    if (!outbound) return FLIGHT_OPTIONS;
-    return FLIGHT_OPTIONS.filter((f) => matchesArrivalLocation(f, outbound));
-  }, [context.outboundCountry]);
-
-  const inboundFlightOptions = useMemo(() => {
-    const inbound = context.inboundCountry;
-    if (!inbound) return FLIGHT_OPTIONS;
-    return FLIGHT_OPTIONS.filter((f) => {
-      const outboundMatch = context.outboundCountry ? matchesDepartureLocation(f, context.outboundCountry) : true;
-      const inboundMatch = matchesArrivalLocation(f, inbound);
-      return outboundMatch && inboundMatch;
-    });
-  }, [context.inboundCountry, context.outboundCountry]);
-
-  const totalCost =
-    (selectedFlight?.price ?? 0) +
-    (selectedHotel ? selectedHotel.pricePerNight * TRIP_NIGHTS : 0) +
-    (selectedCar ? selectedCar.pricePerDay * CAR_DAYS : 0) +
-    selectedActivities.reduce((sum, a) => sum + a.price, 0);
-
-  const appendAssistantMessage = (content: string) => {
-    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const msg: Message = {
-      id: String(Date.now() + Math.floor(Math.random() * 1000)),
-      role: 'assistant',
-      content,
-      timestamp: ts,
+    const nextState: PersistedPlanState = {
+      selectedStyle,
+      origin,
+      destination,
+      destinationTargets,
+      returnTo,
+      selectedActivityIds,
+      outboundFlights,
+      inboundFlights,
+      selectedOutboundId,
+      selectedInboundId,
     };
-    setMessages((prev) => [...prev, msg]);
-  };
+    sessionStorage.setItem(PLAN_STATE_KEY, JSON.stringify(nextState));
+  }, [
+    selectedStyle,
+    origin,
+    destination,
+    destinationTargets,
+    returnTo,
+    selectedActivityIds,
+    outboundFlights,
+    inboundFlights,
+    selectedOutboundId,
+    selectedInboundId,
+  ]);
 
-  const parseSingleChoice = (text: string, max: number): number | null => {
-    const n = Number(text.trim());
-    if (!Number.isNaN(n) && n >= 1 && n <= max) return n;
-    return null;
-  };
+  useEffect(() => {
+    if (selectedActivities.length === 0) return;
 
-  const parseMultiChoice = (text: string, max: number): number[] => {
-    const parts = text.split(/[ ,]+/).map((p) => Number(p.trim())).filter((n) => !Number.isNaN(n));
-    const uniques = Array.from(new Set(parts)).filter((n) => n >= 1 && n <= max);
-    return uniques;
-  };
+    const names = selectedActivities.map((a) => a.title).join(', ');
+    appendAssistant(`Added to your trip plan: ${names}. I included this in your trip summary and total cost.`);
+  }, [selectedActivities.length]);
 
-  const askNextQuestion = (nextStep: PlannerStep) => {
-    if (nextStep === 'hotel') {
-      appendAssistantMessage(
-        `Great, flight saved. Next: choose your hotel. Reply with a number.\n\n${formatChoiceList(HOTEL_OPTIONS, (h, i) => `${i}) ${h.name} · ${h.city}, ${h.country} ($${h.pricePerNight}/night)`)}`,
+  useEffect(() => {
+    if (availableActivities.length === 0) return;
+
+    const promptKey = `${selectedStyle}|${destinationTargets.join(',')}`;
+    if (promptKey === activityPromptKey) return;
+
+    const picks = availableActivities
+      .slice(0, 3)
+      .map((activity, idx) => `${idx + 1}) ${activity.title}`)
+      .join(' | ');
+
+    appendAssistant(`Based on your ${selectedStyle} style, I can suggest activities: ${picks}. Reply with numbers like 1,2 or click the cards below to add them.`);
+    setActivityPromptKey(promptKey);
+  }, [availableActivities, selectedStyle, destinationTargets, activityPromptKey]);
+
+  useEffect(() => {
+    if (selectedOutbound && selectedInbound && !selectionGuidanceShown) {
+      appendAssistant(
+        `Nice picks. Your outbound and inbound flights are selected. If this looks good, click Confirm to continue to the confirm page. If you want changes, tell me what to adjust.`,
       );
-      return;
+      setSelectionGuidanceShown(true);
     }
-    if (nextStep === 'car') {
-      appendAssistantMessage(
-        `Nice hotel choice. Next: pick a car rental (${CAR_DAYS} days). Reply with a number.\n\n${formatChoiceList(CAR_OPTIONS, (c, i) => `${i}) ${c.name} · ${c.city}, ${c.country} ($${c.pricePerDay}/day)`)}`,
-      );
-      return;
-    }
-    if (nextStep === 'activity') {
-      appendAssistantMessage(
-        `Perfect. Pick activities you want. You can choose multiple, like: 1 3 8\n\n${formatChoiceList(ACTIVITY_OPTIONS, (a, i) => `${i}) ${a.name} · ${a.city}, ${a.country} ($${a.price})`)}`,
-      );
-      return;
-    }
-    if (nextStep === 'done') {
-      appendAssistantMessage('All set. Your trip summary now includes flights, hotel, car rental, activities, and total pricing.');
-    }
-  };
+  }, [selectedOutbound, selectedInbound, selectionGuidanceShown]);
 
-  const startGuidedFlowForStyle = (style: string) => {
-    setContext((prev) => ({
+  const appendAssistant = (content: string) => {
+    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setMessages((prev) => [
       ...prev,
-      selectedStyle: style,
-      outboundCountry: null,
-      inboundCountry: null,
-      selectedFlightId: null,
-      selectedHotelId: null,
-      selectedCarId: null,
-      selectedActivityIds: [],
-      step: 'route',
+      { id: `assistant-${Date.now()}-${Math.random()}`, role: 'assistant', content, timestamp: ts },
+    ]);
+  };
+
+  const searchFlights = async (originIata: string, destinationIatas: string[], returnIata: string) => {
+    const depDate = new Date();
+    depDate.setDate(depDate.getDate() + 7);
+    const retDate = new Date();
+    retDate.setDate(retDate.getDate() + 14);
+
+    const outboundResults = await Promise.all(destinationIatas.map(async (dest) => {
+      const outboundReq = {
+        origin: originIata,
+        destination: dest,
+        departure_date: toIsoDate(depDate),
+        passengers: 1,
+        cabin_class: 'economy',
+      };
+      const res = await fetch(`${API_BASE}/flights/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(outboundReq),
+      });
+      const data = (await res.json().catch(() => null)) as FlightSearchResponse | null;
+      return { ok: res.ok, flights: data?.outbound_flights ?? [] };
     }));
 
-    appendAssistantMessage(
-      `Great choice: ${style}. I will guide you step-by-step and auto-fill your trip summary.\n\nStep 1: where do you want to go? Reply with a location, for example Japan, Tokyo, or HND.`,
-    );
+    const inboundResults = await Promise.all(destinationIatas.map(async (dest) => {
+      const inboundReq = {
+        origin: dest,
+        destination: returnIata,
+        departure_date: toIsoDate(retDate),
+        passengers: 1,
+        cabin_class: 'economy',
+      };
+      const res = await fetch(`${API_BASE}/flights/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inboundReq),
+      });
+      const data = (await res.json().catch(() => null)) as FlightSearchResponse | null;
+      return { ok: res.ok, flights: data?.outbound_flights ?? [] };
+    }));
+
+    const outFlights = outboundResults.flatMap((r) => r.flights);
+    const inFlights = inboundResults.flatMap((r) => r.flights);
+    const hasAnyRoute = outboundResults.some((r) => r.ok) || inboundResults.some((r) => r.ok);
+
+    if (!hasAnyRoute) {
+      throw new Error('No flights found for this route right now.');
+    }
+
+    outFlights.sort((a, b) => a.price_per_person - b.price_per_person);
+    inFlights.sort((a, b) => a.price_per_person - b.price_per_person);
+
+    setOutboundFlights(outFlights);
+    setInboundFlights(inFlights);
+    setSelectedOutboundId(null);
+    setSelectedInboundId(null);
+    setSelectionGuidanceShown(false);
+  };
+
+  const handleStyleSelect = (style: TravelStyleOption) => {
+    setSelectedStyle(style.title);
+    setStyleAnswers([]);
+    setStyleFollowupIndex(0);
+    setStyleFollowupActive(true);
+    setSelectedActivityIds([]);
+    setActivityPromptKey(null);
+
+    const cityList = style.suggestions.map((s) => s.city).join(', ');
+    const ideas = style.suggestions.map((s) => s.idea).join(' | ');
+
+    appendAssistant(`Great choice. ${style.title} style is selected.`);
+    appendAssistant(`Suggestions for your vibe: ${cityList}.`);
+    appendAssistant(`Top experiences: ${ideas}`);
+    appendAssistant(style.followUpQuestions[0]);
   };
 
   const handleSend = async (text: string) => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const userMsg: Message = { id: String(Date.now()), role: 'user', content: text, timestamp: ts };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: 'user', content: text, timestamp: ts }]);
 
-    const normalized = text.toLowerCase().trim();
-    if (!normalized) return;
+    const lower = text.toLowerCase();
+    const hasFlightSignal = /(?:\bfrom\b|\bto\b|\bairport\b|\bdepart\b|\breturn\b|\bback\b|\bflight\b|\biata\b)/i.test(lower);
+    const wantsToSkipStyleQuestions = /(?:\bskip\b|\bdone\b|\bcontinue\b|\bnext\b|no more questions)/i.test(lower);
 
-    if (normalized === 'reset' || normalized === 'restart') {
-      startGuidedFlowForStyle(context.selectedStyle);
-      return;
-    }
-
-    if (context.step === 'route') {
-      const location = extractLocationFromText(text);
-      if (!context.outboundCountry) {
-        if (!location) {
-          appendAssistantMessage('Please tell me the destination location first (country, city, or airport code), for example: Japan, Tokyo, or HND.');
-          return;
-        }
-
-        setContext((prev) => ({ ...prev, outboundCountry: location, selectedFlightId: null }));
-        appendAssistantMessage(`Great. I will filter outbound flights to ${location}. Now tell me where you want to return to (country, city, or airport code).`);
+    if (styleFollowupActive && !awaitingField) {
+      if (wantsToSkipStyleQuestions) {
+        setStyleFollowupActive(false);
+        setStyleFollowupIndex(-1);
+        appendAssistant('No problem. Tell me your destination and departure airport, and I will start filtering flights.');
         return;
       }
 
-      if (!context.inboundCountry) {
-        if (!location) {
-          appendAssistantMessage('Please tell me your return location (country, city, or airport code), for example: United States, New York, or JFK.');
-          return;
+      if (!hasFlightSignal) {
+        const updatedAnswers = [...styleAnswers, text.trim()];
+        setStyleAnswers(updatedAnswers);
+
+        const nextIndex = styleFollowupIndex + 1;
+        if (nextIndex < selectedStyleConfig.followUpQuestions.length) {
+          setStyleFollowupIndex(nextIndex);
+          appendAssistant(selectedStyleConfig.followUpQuestions[nextIndex]);
+        } else {
+          setStyleFollowupActive(false);
+          setStyleFollowupIndex(-1);
+          appendAssistant(
+            `Perfect. I tailored your ${selectedStyleConfig.title} profile with your preferences. Next, tell me where you are traveling to and your departure airport so I can filter outbound and inbound flights.`,
+          );
         }
+        return;
+      }
 
-        const outbound = context.outboundCountry;
-        const filteredOutbound = outbound
-          ? FLIGHT_OPTIONS.filter((f) => matchesArrivalLocation(f, outbound))
-          : [];
-        setContext((prev) => ({ ...prev, inboundCountry: location, step: 'flight' }));
+      setStyleFollowupActive(false);
+      setStyleFollowupIndex(-1);
+      appendAssistant('Switching to flights now. Tell me your destination and departure airport.');
+    }
 
-        if (filteredOutbound.length === 0) {
-          appendAssistantMessage(`I could not find outbound flights to ${context.outboundCountry}. Try another destination location.`);
-          return;
-        }
+    if (availableActivities.length > 0) {
+      const matchedByNumber = Array.from(text.matchAll(/\b([1-9])\b/g))
+        .map((m) => Number(m[1]) - 1)
+        .filter((idx) => idx >= 0 && idx < availableActivities.length)
+        .map((idx) => availableActivities[idx]?.id)
+        .filter((id): id is string => Boolean(id));
 
-        appendAssistantMessage(
-          `Perfect. Outbound is now filtered to ${context.outboundCountry}, and inbound is filtered to ${location}.\n\nSelect your outbound flight by number:\n\n${formatChoiceList(filteredOutbound, (f, i) => `${i}) ${f.departureCity} (${f.departureCode}) -> ${f.arrivalCity} (${f.arrivalCode}) · ${f.airline} ${f.flightNumber} ${f.cabinClass} ($${f.price})`)}`,
+      const matchedByTitle = availableActivities
+        .filter((activity) => lower.includes(activity.title.toLowerCase()))
+        .map((activity) => activity.id);
+
+      const matched = Array.from(new Set([...matchedByNumber, ...matchedByTitle]));
+
+      if (matched.length > 0) {
+        setSelectedActivityIds((prev) => Array.from(new Set([...prev, ...matched])));
+        const chosen = availableActivities
+          .filter((activity) => matched.includes(activity.id))
+          .map((activity) => `${activity.title} ($${activity.price})`)
+          .join(', ');
+        appendAssistant(`Great choice. I added: ${chosen}. I updated your trip summary and pricing.`);
+        return;
+      }
+    }
+
+    const fromMatch = lower.match(/(?:from|depart(?:ing)?\s+from|leaving\s+from)\s+([a-z\s]{2,40})/i);
+    const toMatch = lower.match(/(?:to|towards)\s+([a-z\s]{2,40})/i);
+    const backMatch = lower.match(/(?:back|return)\s+to\s+([a-z\s]{2,40})/i);
+    const standaloneIata = (!fromMatch && !toMatch && !backMatch) ? resolveIata(text) : null;
+    const standaloneDestinationTargets = (!fromMatch && !toMatch && !backMatch) ? resolveDestinationTargets(text) : null;
+
+    const genericFlightIntent = /\bflight(s)?\b/.test(lower)
+      && !fromMatch
+      && !toMatch
+      && !backMatch
+      && !standaloneIata
+      && !standaloneDestinationTargets;
+
+    if (genericFlightIntent) {
+      setOrigin(null);
+      setDestination(null);
+      setDestinationTargets([]);
+      setReturnTo(null);
+      setAwaitingField('destination');
+      appendAssistant('Great, let us start with outbound flights. Where are you traveling to? (for example Japan, Tokyo, or HND)');
+      return;
+    }
+
+    let nextOrigin = fromMatch ? resolveIata(fromMatch[1]) : origin;
+    let nextDestinationTargets: string[] =
+      (toMatch ? (resolveDestinationTargets(toMatch[1]) ?? []) : [])
+      || [];
+
+    if (nextDestinationTargets.length === 0) {
+      nextDestinationTargets = destinationTargets.length > 0 ? destinationTargets : (destination ? [destination] : []);
+    }
+
+    let nextDestination = nextDestinationTargets[0] ?? destination;
+    let nextReturn = backMatch ? resolveIata(backMatch[1]) : returnTo;
+
+    if (standaloneDestinationTargets || standaloneIata) {
+      const firstStandaloneDestination = standaloneDestinationTargets?.[0] ?? standaloneIata;
+
+      if (awaitingField === 'destination' && !nextDestination) {
+        nextDestinationTargets = standaloneDestinationTargets ?? (firstStandaloneDestination ? [firstStandaloneDestination] : []);
+        nextDestination = firstStandaloneDestination ?? nextDestination;
+      } else if (awaitingField === 'origin' && !nextOrigin) {
+        nextOrigin = standaloneIata;
+      } else if (awaitingField === 'return' && !nextReturn) {
+        nextReturn = standaloneIata;
+      } else if (!nextDestination) {
+        nextDestinationTargets = standaloneDestinationTargets ?? (firstStandaloneDestination ? [firstStandaloneDestination] : []);
+        nextDestination = firstStandaloneDestination ?? nextDestination;
+      } else if (!nextOrigin) {
+        nextOrigin = standaloneIata;
+      } else if (!nextReturn) {
+        nextReturn = standaloneIata;
+      }
+    }
+
+    if (fromMatch && !nextOrigin) {
+      setAwaitingField('origin');
+      appendAssistant('I could not recognize that departure airport. Try city or IATA, for example Dallas or DFW.');
+      return;
+    }
+    if (toMatch && !nextDestinationTargets[0]) {
+      setAwaitingField('destination');
+      appendAssistant('I could not recognize that destination. Try a city, country, or IATA code, for example Japan, Tokyo, or HND.');
+      return;
+    }
+    if (backMatch && !nextReturn) {
+      setAwaitingField('return');
+      appendAssistant('I could not recognize that return destination. Try city or IATA, for example Dallas or DFW.');
+      return;
+    }
+
+    if (awaitingField && !standaloneIata && !standaloneDestinationTargets && !fromMatch && !toMatch && !backMatch) {
+      appendAssistant('I could not recognize that location yet. Try a country, city, or 3-letter airport code like Japan, Tokyo, HND, Dallas, or DFW.');
+      return;
+    }
+
+    if (nextOrigin !== origin) setOrigin(nextOrigin ?? null);
+    if (nextDestination !== destination) setDestination(nextDestination ?? null);
+    setDestinationTargets(nextDestinationTargets);
+    if (nextReturn !== returnTo) setReturnTo(nextReturn ?? null);
+
+    const inferredReturn = nextReturn ?? nextOrigin;
+
+    if (!nextDestinationTargets[0]) {
+      setAwaitingField('destination');
+      appendAssistant('Where are you traveling to? Tell me a city, country, or airport code, for example Japan, Tokyo, or HND.');
+      return;
+    }
+
+    if (!nextOrigin) {
+      setAwaitingField('origin');
+      if (nextDestinationTargets.length > 1) {
+        appendAssistant(
+          `Great. I will search flights across Japan airports (${nextDestinationTargets.join(', ')}). What is your departure airport? (for example DFW)`,
         );
-        return;
+      } else {
+        appendAssistant(`Great. I will search flights to ${nextDestination}. What is your departure airport? (for example DFW)`);
       }
-    }
-
-    if (context.step === 'flight') {
-      if (!context.outboundCountry) {
-        const destinationLocation = extractLocationFromText(text);
-        if (destinationLocation) {
-          setContext((prev) => ({
-            ...prev,
-            outboundCountry: destinationLocation,
-            inboundCountry: null,
-            selectedFlightId: null,
-            step: 'route',
-          }));
-          appendAssistantMessage(`Got it. I will filter outbound flights to ${destinationLocation}. Now tell me where you want to return to (country, city, or airport code).`);
-          return;
-        }
-
-        appendAssistantMessage('First tell me your destination location (country, city, or airport code), for example: Japan, Tokyo, or HND.');
-        return;
-      }
-
-      const choice = parseSingleChoice(text, outboundFlightOptions.length);
-      if (!choice) {
-        appendAssistantMessage(`Please select a flight by replying with a number from 1 to ${outboundFlightOptions.length}.`);
-        return;
-      }
-      const selected = outboundFlightOptions[choice - 1];
-      setContext((prev) => ({ ...prev, selectedFlightId: selected.id, step: 'hotel' }));
-      appendAssistantMessage(`Saved flight: ${selected.airline} ${selected.flightNumber} (${selected.cabinClass}) for $${selected.price}.`);
-      askNextQuestion('hotel');
       return;
     }
 
-    if (context.step === 'hotel') {
-      const choice = parseSingleChoice(text, HOTEL_OPTIONS.length);
-      if (!choice) {
-        appendAssistantMessage(`Please select a hotel by replying with a number from 1 to ${HOTEL_OPTIONS.length}.`);
-        return;
-      }
-      const selected = HOTEL_OPTIONS[choice - 1];
-      setContext((prev) => ({ ...prev, selectedHotelId: selected.id, step: 'car' }));
-      appendAssistantMessage(`Saved hotel: ${selected.name} at $${selected.pricePerNight}/night.`);
-      askNextQuestion('car');
+    if (!nextReturn) {
+      setAwaitingField('return');
+      appendAssistant(`Perfect for outbound. For inbound flights, where do you want to return to from ${nextDestinationTargets[0]}? (for example Dallas or DFW)`);
       return;
     }
 
-    if (context.step === 'car') {
-      const choice = parseSingleChoice(text, CAR_OPTIONS.length);
-      if (!choice) {
-        appendAssistantMessage(`Please select a car by replying with a number from 1 to ${CAR_OPTIONS.length}.`);
-        return;
-      }
-      const selected = CAR_OPTIONS[choice - 1];
-      setContext((prev) => ({ ...prev, selectedCarId: selected.id, step: 'activity' }));
-      appendAssistantMessage(`Saved car rental: ${selected.name} at $${selected.pricePerDay}/day.`);
-      askNextQuestion('activity');
-      return;
-    }
+    setAwaitingField(null);
 
-    if (context.step === 'activity') {
-      const choices = parseMultiChoice(text, ACTIVITY_OPTIONS.length);
-      if (choices.length === 0) {
-        appendAssistantMessage('Please choose at least one activity, for example: 1 3 8');
-        return;
-      }
-      const activityIds = choices.map((c) => ACTIVITY_OPTIONS[c - 1].id);
-      setContext((prev) => ({ ...prev, selectedActivityIds: activityIds, step: 'done' }));
-      const names = choices.map((c) => ACTIVITY_OPTIONS[c - 1].name).join(', ');
-      appendAssistantMessage(`Saved activities: ${names}.`);
-      askNextQuestion('done');
-      return;
-    }
+    setLoadingFlights(true);
+    setFlightError(null);
+    try {
+      await searchFlights(nextOrigin, nextDestinationTargets, inferredReturn ?? nextOrigin);
+      setOrigin(nextOrigin);
+      setDestination(nextDestinationTargets[0] ?? nextDestination);
+      setDestinationTargets(nextDestinationTargets);
+      setReturnTo(inferredReturn ?? nextOrigin);
 
-    appendAssistantMessage('Your trip is already planned. Type reset to start over with a new style.');
+      if (nextDestinationTargets.length > 1) {
+        appendAssistant(
+          `Found flights from ${nextOrigin} to Japan airports: ${nextDestinationTargets.join(', ')}. Outbound and inbound options are now filtered and listed below.`,
+        );
+      } else {
+        appendAssistant(
+          `Found flights: ${nextOrigin} -> ${nextDestinationTargets[0]} and return ${nextDestinationTargets[0]} -> ${inferredReturn ?? nextOrigin}. Select the outbound and inbound options shown on the page.`,
+        );
+      }
+    } catch (e) {
+      setOutboundFlights([]);
+      setInboundFlights([]);
+      setFlightError(e instanceof Error ? e.message : 'Failed to load flights.');
+      appendAssistant('I could not load flights for that route. Try another origin/destination pair.');
+    } finally {
+      setLoadingFlights(false);
+    }
   };
 
   const leftPanel = (
@@ -578,11 +863,10 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
       onClearChat={onClearChat}
       assistantName="Pathfinder AI"
       assistantSubtitle="Your Travel Curator"
-      isOnline
-      inputPlaceholder="Ask your companion..."
+      isOnline={true}
+      inputPlaceholder="Tell me destination and departure airport..."
       quickActions={[
-        { icon: <SmallPlaneIcon />, label: 'Search flights', onClick: () => onNavigate?.('home') },
-        { icon: <SmallBedIcon />, label: 'Start guided planner', onClick: () => startGuidedFlowForStyle(context.selectedStyle) },
+        { icon: <SmallPlaneIcon />, label: 'Find flights to Tokyo from DFW', onClick: () => handleSend('I am going to Tokyo from DFW and returning to Dallas') },
       ]}
     />
   );
@@ -594,76 +878,53 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
           Trip Summary
         </h2>
 
-        <TripSummaryItem icon={<PlaneIcon />} label="Flights" value={selectedFlight ? `${selectedFlight.departureCity} -> ${selectedFlight.arrivalCity}` : 'Not selected'} price={selectedFlight?.price}>
+        <TripSummaryItem
+          icon={<PlaneIcon />}
+          label="Outbound"
+          value={selectedOutbound ? `${selectedOutbound.origin} -> ${selectedOutbound.destination}` : 'Not selected'}
+          price={selectedOutbound?.price_per_person}
+        >
           <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)' }}>
-            {selectedFlight ? `${selectedFlight.departureCountry} -> ${selectedFlight.arrivalCountry} · ${selectedFlight.airline} ${selectedFlight.flightNumber} · ${selectedFlight.cabinClass}` : 'Choose a flight in guided flow'}
+            {selectedOutbound
+              ? `${selectedOutbound.airline} ${selectedOutbound.flight_number} · ${formatTime(selectedOutbound.departure_at)} to ${formatTime(selectedOutbound.arrival_at)}`
+              : 'Select an outbound flight from the center panel.'}
           </p>
         </TripSummaryItem>
 
         <TripSummaryItem
-          icon={<BedIcon />}
-          label="Accommodation"
-          value={selectedHotel ? `${selectedHotel.name} (${selectedHotel.city}, ${selectedHotel.country})` : 'No hotel selected yet'}
-          price={selectedHotel ? selectedHotel.pricePerNight * TRIP_NIGHTS : undefined}
+          icon={<PlaneIcon />}
+          label="Inbound"
+          value={selectedInbound ? `${selectedInbound.origin} -> ${selectedInbound.destination}` : 'Not selected'}
+          price={selectedInbound?.price_per_person}
         >
-          {selectedHotel ? (
-            <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: 0 }}>
-              {selectedHotel.roomType} · {TRIP_NIGHTS} nights at ${selectedHotel.pricePerNight}/night
-            </p>
-          ) : (
-            <NoHotelSlot />
-          )}
-        </TripSummaryItem>
-
-        <TripSummaryItem
-          icon={<CarIcon />}
-          label="Transportation"
-          value={selectedCar ? `${selectedCar.name} (${selectedCar.city}, ${selectedCar.country})` : 'Not added'}
-          price={selectedCar ? selectedCar.pricePerDay * CAR_DAYS : undefined}
-        >
-          {selectedCar && (
-            <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: 0 }}>
-              {selectedCar.transmission} · {CAR_DAYS} days at ${selectedCar.pricePerDay}/day
-            </p>
-          )}
-        </TripSummaryItem>
-
-        <TripSummaryItem
-          icon={<CompassIcon />}
-          label="Activities"
-          value={selectedActivities.length > 0 ? `${selectedActivities.length} selected` : 'Not added'}
-          price={selectedActivities.reduce((sum, a) => sum + a.price, 0) || undefined}
-          expandable
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {selectedActivities.length > 0 ? (
-              selectedActivities.map((activity) => (
-                <p key={activity.id} style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: 0 }}>
-                  {activity.name} · {activity.city}, {activity.country} · ${activity.price}
-                </p>
-              ))
-            ) : (
-              <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: 0 }}>
-                Choose activities in the guided flow.
-              </p>
-            )}
-            {selectedActivities.length > 0 && <Badge variant="confirmed">Included</Badge>}
-          </div>
+          <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)' }}>
+            {selectedInbound
+              ? `${selectedInbound.airline} ${selectedInbound.flight_number} · ${formatTime(selectedInbound.departure_at)} to ${formatTime(selectedInbound.arrival_at)}`
+              : 'Select an inbound flight from the center panel.'}
+          </p>
         </TripSummaryItem>
       </div>
 
       <div style={{ flex: 1 }} />
       <TotalCostBar
-        label="Total Trip Cost"
+        label="Total Flight Cost"
         totalPrice={totalCost}
-        subLabel="Inc. taxes & fees"
-        ctaLabel="Review and Confirm ->"
-        ctaDisabled={!selectedFlight || !selectedHotel || !selectedCar || selectedActivities.length === 0}
+        subLabel="Per traveler"
+        ctaLabel="Confirm"
+        onCta={() => {
+          if (!selectedOutbound || !selectedInbound) return;
+          onConfirmSelection?.({
+            outbound: selectedOutbound,
+            inbound: selectedInbound,
+            totalPrice: totalCost,
+            currency: selectedOutbound.currency || selectedInbound.currency || 'USD',
+          });
+          onNavigate?.('confirm');
+        }}
+        ctaDisabled={!selectedOutbound || !selectedInbound}
         breakdown={[
-          ...(selectedFlight ? [{ label: `${selectedFlight.airline} ${selectedFlight.flightNumber}`, amount: selectedFlight.price }] : []),
-          ...(selectedHotel ? [{ label: `${selectedHotel.name} (${TRIP_NIGHTS} nights)`, amount: selectedHotel.pricePerNight * TRIP_NIGHTS }] : []),
-          ...(selectedCar ? [{ label: `${selectedCar.name} (${CAR_DAYS} days)`, amount: selectedCar.pricePerDay * CAR_DAYS }] : []),
-          ...selectedActivities.map((a) => ({ label: a.name, amount: a.price })),
+          ...(selectedOutbound ? [{ label: `Outbound ${selectedOutbound.flight_number}`, amount: selectedOutbound.price_per_person }] : []),
+          ...(selectedInbound ? [{ label: `Inbound ${selectedInbound.flight_number}`, amount: selectedInbound.price_per_person }] : []),
         ]}
       />
     </div>
@@ -681,40 +942,67 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
           if (pages[i] && pages[i] !== 'plan') onNavigate?.(pages[i]);
         }}
       />
+
       <PageLayout leftPanel={leftPanel} rightPanel={rightPanel} leftWidth={300} rightWidth={290} bg="var(--color-bg-page-light)">
         <div className="surface-light" style={{ padding: '24px 28px', minHeight: '100%', background: 'var(--color-bg-page-light)' }}>
           <div style={{ marginBottom: 28 }}>
             <h2 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-tight)', margin: '0 0 16px' }}>
               Choose Your Travel Style
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-              <TravelStyleCard
-                imageCss="linear-gradient(160deg, #3B2A1A 0%, #5C3D1E 50%, #2A1A0A 100%)"
-                tag="Curated"
-                tagVariant="curated"
-                title="Luxury Elite"
-                description="Private villas, Michelin dining, chauffeur service"
-                selected={context.selectedStyle === 'Luxury Elite'}
-                onSelect={() => startGuidedFlowForStyle('Luxury Elite')}
-              />
-              <TravelStyleCard
-                imageCss="linear-gradient(160deg, #0D0D2E 0%, #1A0D3A 40%, #0A1A3A 100%)"
-                tag="Selected"
-                tagVariant="selected"
-                title="Urban Adventure"
-                description="Rooftop bars, street food, cultural deep dives"
-                selected={context.selectedStyle === 'Urban Adventure'}
-                onSelect={() => startGuidedFlowForStyle('Urban Adventure')}
-              />
-              <TravelStyleCard
-                imageCss="linear-gradient(160deg, #0A2A1A 0%, #1A3A0A 50%, #0A1A0A 100%)"
-                tag="Escape"
-                tagVariant="escape"
-                title="Zen Nature"
-                description="Ryokans, onsen, forest hikes, sacred shrines"
-                selected={context.selectedStyle === 'Zen Nature'}
-                onSelect={() => startGuidedFlowForStyle('Zen Nature')}
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: 12 }}>
+              {TRAVEL_STYLES.map((style) => (
+                <TravelStyleCard
+                  key={style.title}
+                  image={style.image}
+                  tag={style.tag}
+                  tagVariant={style.tagVariant}
+                  title={style.title}
+                  description={style.description}
+                  selected={selectedStyle === style.title}
+                  onSelect={() => handleStyleSelect(style)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <SectionHeader
+              icon={<SearchIcon />}
+              heading={`${selectedStyleConfig.title} Suggestions`}
+              subheading="Places and activities tailored to your selected travel style"
+              theme="light"
+              className="mb-4"
+            />
+            <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+              {selectedStyleConfig.suggestions.map((suggestion) => (
+                <div
+                  key={suggestion.city}
+                  style={{
+                    borderRadius: 'var(--radius-xl)',
+                    overflow: 'hidden',
+                    border: '1.5px solid var(--color-border)',
+                    background: 'var(--color-bg-surface)',
+                    boxShadow: 'var(--shadow-sm)',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: 130,
+                      backgroundImage: `linear-gradient(180deg, rgba(6,7,18,0.08) 0%, rgba(6,7,18,0.45) 100%), url(${suggestion.image})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }}
+                  />
+                  <div style={{ padding: '10px 12px' }}>
+                    <p style={{ margin: 0, color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+                      {suggestion.city}
+                    </p>
+                    <p style={{ margin: '4px 0 0', color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
+                      {suggestion.idea}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -722,29 +1010,43 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
             <SectionHeader
               icon={<PlaneIcon />}
               heading="Outbound Flights"
-              subheading={context.outboundCountry ? `Filtered to ${context.outboundCountry} · ${outboundFlightOptions.length} options` : `Global Routes · ${FLIGHT_OPTIONS.length} options`}
+              subheading={origin && destinationTargets.length > 0
+                ? destinationTargets.length > 1
+                  ? `${origin} -> ${destinationTargets.join(', ')}`
+                  : `${origin} -> ${destinationTargets[0]}`
+                : 'Flights will appear after you provide destination and departure airport in chat.'}
               theme="light"
               className="mb-4"
             />
             <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {(outboundFlightOptions.length > 0 ? outboundFlightOptions : FLIGHT_OPTIONS).slice(0, 12).map((flight, idx) => (
-                <FlightCard
-                  key={flight.id}
-                  airline={flight.airline}
-                  flightNumber={flight.flightNumber}
-                  cabinClass={flight.cabinClass}
-                  departureTime={flight.departureTime}
-                  departureCode={flight.departureCode}
-                  arrivalTime={flight.arrivalTime}
-                  arrivalCode={flight.arrivalCode}
-                  duration={flight.duration}
-                  stops={0}
-                  price={flight.price}
-                  recommended={idx === 1}
-                  selected={context.selectedFlightId === flight.id}
-                  onSelect={() => setContext((prev) => ({ ...prev, selectedFlightId: prev.selectedFlightId === flight.id ? null : flight.id }))}
+              {loadingFlights ? (
+                <EmptyState icon={<SearchIcon />} message="Searching outbound flights..." description="Loading matched outbound offers." />
+              ) : outboundFlights.length > 0 ? (
+                outboundFlights.map((flight, i) => (
+                  <FlightCard
+                    key={flight.offer_id}
+                    airline={flight.airline}
+                    flightNumber={flight.flight_number}
+                    cabinClass={flight.cabin_class}
+                    departureTime={formatTime(flight.departure_at)}
+                    departureCode={flight.origin}
+                    arrivalTime={formatTime(flight.arrival_at)}
+                    arrivalCode={flight.destination}
+                    duration={formatDuration(flight.duration_minutes)}
+                    stops={flight.stops}
+                    price={flight.price_per_person}
+                    selected={selectedOutboundId === flight.offer_id}
+                    recommended={i === 0}
+                    onSelect={() => setSelectedOutboundId(selectedOutboundId === flight.offer_id ? null : flight.offer_id)}
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  icon={<SearchIcon />}
+                  message={flightError ?? 'No outbound flights yet'}
+                  description="Tell the chatbot your destination and departure airport (example: I am going to Tokyo from DFW)."
                 />
-              ))}
+              )}
             </div>
           </div>
 
@@ -752,97 +1054,39 @@ export default function PlanPage({ userEmail, onNavigate, messages, setMessages,
             <SectionHeader
               icon={<PlaneIcon />}
               heading="Inbound Flights"
-              subheading={context.inboundCountry ? `Filtered to ${context.inboundCountry}` : 'Multi-country inbound options'}
+              subheading={destination && returnTo ? `${destination} -> ${returnTo}` : 'Inbound flights will appear after route search.'}
               theme="light"
               className="mb-4"
             />
-            <div style={{ marginTop: 14 }}>
-              {context.outboundCountry && context.inboundCountry ? (
-                inboundFlightOptions.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {inboundFlightOptions.slice(0, 6).map((flight) => (
-                      <FlightCard
-                        key={`in-${flight.id}`}
-                        airline={flight.airline}
-                        flightNumber={flight.flightNumber}
-                        cabinClass={flight.cabinClass}
-                        departureTime={flight.departureTime}
-                        departureCode={flight.departureCode}
-                        arrivalTime={flight.arrivalTime}
-                        arrivalCode={flight.arrivalCode}
-                        duration={flight.duration}
-                        stops={0}
-                        price={flight.price}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={<SearchIcon />}
-                    message="No inbound flights found"
-                    description="Try a different return country in chat."
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {loadingFlights ? (
+                <EmptyState icon={<SearchIcon />} message="Searching inbound flights..." description="Loading matched return offers." />
+              ) : inboundFlights.length > 0 ? (
+                inboundFlights.map((flight, i) => (
+                  <FlightCard
+                    key={flight.offer_id}
+                    airline={flight.airline}
+                    flightNumber={flight.flight_number}
+                    cabinClass={flight.cabin_class}
+                    departureTime={formatTime(flight.departure_at)}
+                    departureCode={flight.origin}
+                    arrivalTime={formatTime(flight.arrival_at)}
+                    arrivalCode={flight.destination}
+                    duration={formatDuration(flight.duration_minutes)}
+                    stops={flight.stops}
+                    price={flight.price_per_person}
+                    selected={selectedInboundId === flight.offer_id}
+                    recommended={i === 0}
+                    onSelect={() => setSelectedInboundId(selectedInboundId === flight.offer_id ? null : flight.offer_id)}
                   />
-                )
+                ))
               ) : (
-                <EmptyState icon={<SearchIcon />} message="Set route in chat first" description="Tell Pathfinder your destination country and return country to filter inbound flights." />
+                <EmptyState
+                  icon={<SearchIcon />}
+                  message={flightError ?? 'No inbound flights yet'}
+                  description="Inbound flights appear when destination and return route are known."
+                />
               )}
-            </div>
-          </div>
-
-          <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', padding: 12, background: 'var(--color-bg-card)', maxHeight: 360, overflowY: 'auto' }}>
-              <h3 style={{ margin: '0 0 10px', color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>Hotel Suggestions ({HOTEL_OPTIONS.length})</h3>
-              {HOTEL_OPTIONS.map((h, idx) => (
-                <button
-                  key={h.id}
-                  type="button"
-                  onClick={() => setContext((prev) => ({ ...prev, selectedHotelId: h.id }))}
-                  style={{ width: '100%', textAlign: 'left', marginBottom: 8, borderRadius: 'var(--radius-md)', border: context.selectedHotelId === h.id ? '1px solid var(--color-primary)' : '1px solid var(--color-border)', background: 'transparent', padding: '8px 10px', cursor: 'pointer' }}
-                >
-                  <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-dark)', fontWeight: 'var(--weight-semibold)' }}>{idx + 1}) {h.name}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-dark-secondary)' }}>{h.city}, {h.country} · ${h.pricePerNight}/night</p>
-                </button>
-              ))}
-            </div>
-
-            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', padding: 12, background: 'var(--color-bg-card)', maxHeight: 360, overflowY: 'auto' }}>
-              <h3 style={{ margin: '0 0 10px', color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>Car Rentals ({CAR_OPTIONS.length})</h3>
-              {CAR_OPTIONS.map((c, idx) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setContext((prev) => ({ ...prev, selectedCarId: c.id }))}
-                  style={{ width: '100%', textAlign: 'left', marginBottom: 8, borderRadius: 'var(--radius-md)', border: context.selectedCarId === c.id ? '1px solid var(--color-primary)' : '1px solid var(--color-border)', background: 'transparent', padding: '8px 10px', cursor: 'pointer' }}
-                >
-                  <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-dark)', fontWeight: 'var(--weight-semibold)' }}>{idx + 1}) {c.name}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-dark-secondary)' }}>{c.city}, {c.country} · ${c.pricePerDay}/day</p>
-                </button>
-              ))}
-            </div>
-
-            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', padding: 12, background: 'var(--color-bg-card)', maxHeight: 360, overflowY: 'auto' }}>
-              <h3 style={{ margin: '0 0 10px', color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>Activities ({ACTIVITY_OPTIONS.length})</h3>
-              {ACTIVITY_OPTIONS.map((a, idx) => {
-                const selected = context.selectedActivityIds.includes(a.id);
-                return (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => {
-                      setContext((prev) => ({
-                        ...prev,
-                        selectedActivityIds: selected
-                          ? prev.selectedActivityIds.filter((id) => id !== a.id)
-                          : [...prev.selectedActivityIds, a.id],
-                      }));
-                    }}
-                    style={{ width: '100%', textAlign: 'left', marginBottom: 8, borderRadius: 'var(--radius-md)', border: selected ? '1px solid var(--color-primary)' : '1px solid var(--color-border)', background: 'transparent', padding: '8px 10px', cursor: 'pointer' }}
-                  >
-                    <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-dark)', fontWeight: 'var(--weight-semibold)' }}>{idx + 1}) {a.name}</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-dark-secondary)' }}>{a.city}, {a.country} · ${a.price}</p>
-                  </button>
-                );
-              })}
             </div>
           </div>
         </div>

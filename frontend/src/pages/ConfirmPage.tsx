@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   TopNav,
   PageLayout,
@@ -83,6 +84,7 @@ export default function ConfirmPage({
   setMessages,
   onClearChat,
 }: ConfirmPageProps) {
+  const [tripNote, setTripNote] = useState('');
 
   const handleSend = (text: string) => {
     setMessages(prev => [...prev, {
@@ -193,7 +195,7 @@ export default function ConfirmPage({
           /* No booking state */
           <div style={{ padding: '32px 16px', textAlign: 'center' }}>
             <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-sm)', margin: 0, lineHeight: 1.6 }}>
-              No confirmed booking yet. Search for a flight to get started.
+              No confirmed trip yet. Select outbound and inbound flights on Plan, then press Confirm.
             </p>
           </div>
         )}
@@ -276,7 +278,7 @@ export default function ConfirmPage({
                   </svg>
                 </div>
                 <h1 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-extrabold)', letterSpacing: 'var(--tracking-tight)', margin: '0 0 6px' }}>
-                  Booking Confirmed!
+                  Your Trip Is Confirmed
                 </h1>
                 <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: 0 }}>
                   Your flight from {bookingData.outbound_origin_city} to {bookingData.outbound_destination_city} is confirmed.
@@ -284,6 +286,109 @@ export default function ConfirmPage({
                 <p style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', fontFamily: 'monospace', margin: '8px 0 0' }}>
                   Ref: {bookingData.booking_reference}
                 </p>
+              </div>
+
+              {/* Confirmation notice */}
+              <div
+                style={{
+                  marginBottom: 24,
+                  padding: '14px 16px',
+                  borderRadius: 'var(--radius-xl)',
+                  border: '1.5px solid var(--color-green-border)',
+                  background: 'linear-gradient(135deg, var(--color-green-bg) 0%, var(--color-bg-surface) 100%)',
+                }}
+              >
+                <p style={{ margin: 0, color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+                  Your trip summary has been sent to {bookingData.contact_email || userEmail || 'your email'}.
+                </p>
+                <p style={{ margin: '4px 0 0', color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)' }}>
+                  Please check your inbox for your itinerary and confirmation details.
+                </p>
+              </div>
+
+              {/* Trip summary review */}
+              <SectionHeader
+                icon={<PlaneIcon />}
+                heading="Trip Summary Review"
+                subheading="Please review and add any final notes"
+                theme="light"
+              />
+              <div
+                style={{
+                  marginTop: 14,
+                  marginBottom: 24,
+                  padding: '16px',
+                  background: 'var(--color-bg-surface)',
+                  border: '1.5px solid var(--color-border)',
+                  borderRadius: 'var(--radius-xl)',
+                  boxShadow: 'var(--shadow-sm)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                  <div>
+                    <p style={{ margin: 0, color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)' }}>
+                      Route
+                    </p>
+                    <p style={{ margin: '4px 0 0', color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+                      {`${bookingData.outbound_origin} -> ${bookingData.outbound_destination}`}
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)' }}>
+                      Departure
+                    </p>
+                    <p style={{ margin: '4px 0 0', color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+                      {fmtFullDate(bookingData.outbound_departure_at)} at {fmtTime(bookingData.outbound_departure_at)}
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)' }}>
+                      Travelers
+                    </p>
+                    <p style={{ margin: '4px 0 0', color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+                      {bookingData.passenger_count} passenger{bookingData.passenger_count > 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)' }}>
+                      Total Paid
+                    </p>
+                    <p style={{ margin: '4px 0 0', color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+                      ${bookingData.total_price.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="trip-note"
+                    style={{ display: 'block', marginBottom: 6, color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)' }}
+                  >
+                    Final Note
+                  </label>
+                  <textarea
+                    id="trip-note"
+                    value={tripNote}
+                    onChange={(e) => setTripNote(e.target.value)}
+                    placeholder="Add any reminder or preference for this trip..."
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      resize: 'vertical',
+                      borderRadius: 'var(--radius-lg)',
+                      border: '1.5px solid var(--color-border)',
+                      background: 'var(--color-bg-input)',
+                      color: 'var(--color-text-dark)',
+                      padding: '10px 12px',
+                      fontSize: 'var(--text-sm)',
+                      lineHeight: 1.5,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Flight confirmation card */}
@@ -398,10 +503,10 @@ export default function ConfirmPage({
               </div>
               <div>
                 <h2 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', margin: '0 0 8px' }}>
-                  No Booking Yet
+                  No Confirmed Trip Yet
                 </h2>
                 <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 24px', maxWidth: 340, lineHeight: 1.6 }}>
-                  Search for a flight, select your preferred option, and complete the booking form to see your confirmation here.
+                  Go to Plan, pick your outbound and inbound flights, and click Confirm to generate your trip confirmation and summary.
                 </p>
                 <Button variant="primary" size="md" onClick={() => onNavigate?.('home')}>
                   Search Flights →
