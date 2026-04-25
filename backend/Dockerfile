@@ -38,7 +38,7 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--no-access-log"]
 
 
 # ── Production stage ──────────────────────────────────────────────────────────
@@ -73,4 +73,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 ENTRYPOINT ["/entrypoint.sh"]
 # PORT is injected by Railway at runtime; defaults to 8000 for other environments.
 # WEB_CONCURRENCY can be tuned via env var (default 2).
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --log-level info"]
+# `exec` replaces the sh process so uvicorn becomes PID 1 and receives OS signals directly.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --log-level info --no-access-log"]

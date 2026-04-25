@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # ── Security ──────────────────────────────────────────────────────────────
     SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
-    ALGORITHM: str = "HS256"
+    ALGORITHM: Literal["HS256", "RS256"] = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     DATABASE_ECHO: bool = False
     # Set to true when connecting to Supabase or any remote Postgres that requires SSL
     DATABASE_SSL: bool = False
+    # Base64-encoded CA cert (preferred for cloud deployments like Railway/Render)
+    DATABASE_SSL_CA_CERT_B64: str = ""
+    # Path to a CA cert file (for local/Docker use)
+    DATABASE_SSL_CA_CERT: str = ""
     # Set to true when connecting through pgBouncer (e.g. Supabase Transaction Pooler port 6543)
     # Disables asyncpg's prepared statement cache, which is incompatible with transaction mode
     DATABASE_PGBOUNCER: bool = False
