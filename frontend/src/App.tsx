@@ -89,6 +89,11 @@ export default function App() {
   const [flightRoute, setFlightRoute] = useState<{ from: string; to: string } | null>(null)
   const [passengerCount, setPassengerCount] = useState(1)
   const [bookingContext, setBookingContext] = useState<BookingContext | null>(loadBookingCtx)
+  // ── Chat ↔ UI sync state ──
+  const [mentionedFlightId, setMentionedFlightId] = useState<string | null>(null)
+  const [selectedFlight, setSelectedFlight] = useState<FlightOffer | null>(null)
+  // ── Pending search query to auto-fire on HomePage ──
+  const [pendingSearch, setPendingSearch] = useState<string | null>(null)
 
   // ── Persist page ──
   useEffect(() => {
@@ -117,7 +122,15 @@ export default function App() {
   }, [bookingContext])
 
   // ── Navigation handler ──
-  const navigate = (target: string) => setPage(target as Page)
+  const navigate = (target: string, searchQuery?: string) => {
+    // Clear AI sync state when going back to search
+    if (target === 'home') {
+      setMentionedFlightId(null)
+      setSelectedFlight(null)
+      if (searchQuery) setPendingSearch(searchQuery)
+    }
+    setPage(target as Page)
+  }
 
   // ── Auth handlers ──
   const handleSignInSuccess = ({
@@ -169,11 +182,6 @@ export default function App() {
   }
 
   // ── Booking handlers ──
-  const handleContinueToBooking = (flight: FlightOffer, passengerCount: number) => {
-    setBookingContext({ flight, passengerCount })
-    setPage('booking')
-  }
-
   const handleBookingComplete = (booking: BookingRead) => {
     setConfirmedBooking(booking)
     // Add confirmation message to shared chat
@@ -209,7 +217,6 @@ export default function App() {
           accessToken={session?.accessToken}
           onOpenProfile={() => setPage('home')}
           onSignOut={handleSignOut}
-          onContinueToBooking={handleContinueToBooking}
           onNavigate={navigate}
           flightResults={flightResults}
           setFlightResults={setFlightResults}
@@ -221,8 +228,12 @@ export default function App() {
           setSelectedFlightId={setSelectedFlightId}
           flightRoute={flightRoute}
           setFlightRoute={setFlightRoute}
-          passengerCount={passengerCount}
           setPassengerCount={setPassengerCount}
+          mentionedFlightId={mentionedFlightId}
+          setMentionedFlightId={setMentionedFlightId}
+          setSelectedFlight={setSelectedFlight}
+          pendingSearch={pendingSearch}
+          onPendingSearchConsumed={() => setPendingSearch(null)}
           {...sharedChat}
         />
       )}
@@ -247,7 +258,6 @@ export default function App() {
           accessToken={session?.accessToken}
           onOpenProfile={() => setPage('home')}
           onSignOut={handleSignOut}
-          onContinueToBooking={handleContinueToBooking}
           onNavigate={navigate}
           flightResults={flightResults}
           setFlightResults={setFlightResults}
@@ -259,8 +269,12 @@ export default function App() {
           setSelectedFlightId={setSelectedFlightId}
           flightRoute={flightRoute}
           setFlightRoute={setFlightRoute}
-          passengerCount={passengerCount}
           setPassengerCount={setPassengerCount}
+          mentionedFlightId={mentionedFlightId}
+          setMentionedFlightId={setMentionedFlightId}
+          setSelectedFlight={setSelectedFlight}
+          pendingSearch={pendingSearch}
+          onPendingSearchConsumed={() => setPendingSearch(null)}
           {...sharedChat}
         />
       )}
@@ -268,7 +282,12 @@ export default function App() {
       {page === 'plan' && (
         <PlanPage
           userEmail={session?.email}
+          accessToken={session?.accessToken}
           onNavigate={navigate}
+          onSignOut={handleSignOut}
+          selectedFlight={selectedFlight}
+          passengerCount={passengerCount}
+          setConfirmedBooking={setConfirmedBooking}
           {...sharedChat}
         />
       )}
@@ -277,7 +296,9 @@ export default function App() {
         <ConfirmPage
           bookingData={confirmedBooking ?? undefined}
           userEmail={session?.email}
+          accessToken={session?.accessToken}
           onNavigate={navigate}
+          onSignOut={handleSignOut}
           {...sharedChat}
         />
       )}

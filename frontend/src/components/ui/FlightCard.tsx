@@ -15,6 +15,7 @@ export interface FlightCardProps {
   currency?: string;
   recommended?: boolean;
   selected?: boolean;
+  mentioned?: boolean;
   onSelect?: () => void;
   className?: string;
 }
@@ -34,6 +35,7 @@ export default function FlightCard({
   currency = 'USD',
   recommended = false,
   selected = false,
+  mentioned = false,
   onSelect,
   className = '',
 }: FlightCardProps) {
@@ -58,7 +60,7 @@ export default function FlightCard({
         textAlign: 'left',
         display: 'block',
       }}
-      className={`group hover:border-[var(--color-border-primary)] hover:bg-[var(--color-bg-card-hover)] ${className}`}
+      className={`group hover:border-[var(--color-border-primary)] hover:bg-[var(--color-bg-card-hover)] ${mentioned && !selected ? 'flight-card-mentioned' : ''} ${className}`}
     >
       {/* Top row: airline + badge + selected check */}
       <div className="flex items-center justify-between mb-4">
@@ -111,6 +113,18 @@ export default function FlightCard({
         </div>
 
         <div className="flex items-center gap-2">
+          {mentioned && !selected && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '2px 8px', borderRadius: 'var(--radius-full)',
+              background: 'rgba(112,71,235,0.15)', border: '1px solid rgba(112,71,235,0.4)',
+              color: 'rgba(167,139,250,1)', fontSize: 10, fontWeight: 700,
+              letterSpacing: '0.05em', textTransform: 'uppercase' as const,
+            }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(167,139,250,1)', display: 'inline-block', animation: 'bounce 1.2s ease-in-out infinite' }} />
+              AI Pick
+            </span>
+          )}
           {recommended && <Badge variant="recommended">Recommended</Badge>}
           {selected && (
             <div

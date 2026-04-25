@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 export interface ChatInputProps {
   onSend?: (message: string) => void;
@@ -17,6 +17,20 @@ export default function ChatInput({
 }: ChatInputProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const prevLoadingRef = useRef(loading);
+
+  // Focus on mount (covers page navigation landing)
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  // Re-focus when AI finishes responding (loading: true → false)
+  useEffect(() => {
+    if (prevLoadingRef.current && !loading) {
+      textareaRef.current?.focus();
+    }
+    prevLoadingRef.current = loading;
+  }, [loading]);
 
   const handleSend = () => {
     const trimmed = value.trim();
@@ -25,6 +39,7 @@ export default function ChatInput({
     setValue('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
+      textareaRef.current.focus();
     }
   };
 
