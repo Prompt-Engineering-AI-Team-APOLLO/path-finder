@@ -92,6 +92,8 @@ export default function App() {
   // ── Chat ↔ UI sync state ──
   const [mentionedFlightId, setMentionedFlightId] = useState<string | null>(null)
   const [selectedFlight, setSelectedFlight] = useState<FlightOffer | null>(null)
+  // ── Pending search query to auto-fire on HomePage ──
+  const [pendingSearch, setPendingSearch] = useState<string | null>(null)
 
   // ── Persist page ──
   useEffect(() => {
@@ -120,11 +122,12 @@ export default function App() {
   }, [bookingContext])
 
   // ── Navigation handler ──
-  const navigate = (target: string) => {
+  const navigate = (target: string, searchQuery?: string) => {
     // Clear AI sync state when going back to search
     if (target === 'home') {
       setMentionedFlightId(null)
       setSelectedFlight(null)
+      if (searchQuery) setPendingSearch(searchQuery)
     }
     setPage(target as Page)
   }
@@ -229,6 +232,8 @@ export default function App() {
           mentionedFlightId={mentionedFlightId}
           setMentionedFlightId={setMentionedFlightId}
           setSelectedFlight={setSelectedFlight}
+          pendingSearch={pendingSearch}
+          onPendingSearchConsumed={() => setPendingSearch(null)}
           {...sharedChat}
         />
       )}
@@ -268,6 +273,8 @@ export default function App() {
           mentionedFlightId={mentionedFlightId}
           setMentionedFlightId={setMentionedFlightId}
           setSelectedFlight={setSelectedFlight}
+          pendingSearch={pendingSearch}
+          onPendingSearchConsumed={() => setPendingSearch(null)}
           {...sharedChat}
         />
       )}

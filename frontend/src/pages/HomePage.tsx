@@ -270,9 +270,12 @@ interface HomePageProps {
   mentionedFlightId: string | null;
   setMentionedFlightId: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedFlight: React.Dispatch<React.SetStateAction<FlightOffer | null>>;
+  // Pending search query carried over from Plan/Confirm page
+  pendingSearch?: string | null;
+  onPendingSearchConsumed?: () => void;
 }
 
-export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onNavigate, messages, setMessages, onClearChat, flightResults, setFlightResults, rawFlightResults, setRawFlightResults, showFlightResults, setShowFlightResults, selectedFlightId, setSelectedFlightId, flightRoute, setFlightRoute, setPassengerCount, mentionedFlightId, setMentionedFlightId, setSelectedFlight }: HomePageProps) {
+export default function HomePage({ userEmail, accessToken, onOpenProfile, onSignOut, onNavigate, messages, setMessages, onClearChat, flightResults, setFlightResults, rawFlightResults, setRawFlightResults, showFlightResults, setShowFlightResults, selectedFlightId, setSelectedFlightId, flightRoute, setFlightRoute, setPassengerCount, mentionedFlightId, setMentionedFlightId, setSelectedFlight, pendingSearch, onPendingSearchConsumed }: HomePageProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [detailFlight, setDetailFlight] = useState<FlightOffer | null>(null);
@@ -528,6 +531,16 @@ Rules:
       setIsTyping(false);
     }
   };
+
+  // Auto-fire a search query carried over from Plan/Confirm page
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (!pendingSearch) return;
+    onPendingSearchConsumed?.();
+    handleSend(pendingSearch);
+  // Only run once when pendingSearch is first set
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div

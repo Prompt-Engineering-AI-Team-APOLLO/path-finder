@@ -31,6 +31,11 @@
   50% { box-shadow: 0 0 0 3px rgba(112, 71, 235, 0.25), 0 0 20px rgba(112, 71, 235, 0.18); }
 }
 
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .flight-card-mentioned {
   animation: mention-glow 2s ease-in-out infinite !important;
   border-color: rgba(112, 71, 235, 0.55) !important;

@@ -363,7 +363,7 @@ interface ConfirmPageProps {
   bookingData?: BookingRead;
   userEmail?: string;
   accessToken?: string;
-  onNavigate?: (page: string) => void;
+  onNavigate?: (page: string, searchQuery?: string) => void;
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   onClearChat?: () => void;
@@ -450,7 +450,7 @@ export default function ConfirmPage({
         { id: String(Date.now()), role: 'user' as const, content: text, timestamp: ts },
         { id: String(Date.now() + 1), role: 'assistant' as const, content: "Sure! Taking you back to search for flights.", timestamp: ts },
       ]);
-      setTimeout(() => onNavigate?.('home'), 800);
+      setTimeout(() => onNavigate?.('home', text), 800);
       return;
     }
 
