@@ -98,6 +98,7 @@ interface PlanPageProps {
   userEmail?: string;
   accessToken?: string;
   onNavigate?: (page: string, searchQuery?: string) => void;
+  onSignOut?: () => void;
   messages: Message[];
   setMessages: Dispatch<SetStateAction<Message[]>>;
   onClearChat?: () => void;
@@ -111,6 +112,7 @@ export default function PlanPage({
   userEmail,
   accessToken,
   onNavigate,
+  onSignOut,
   messages,
   setMessages,
   onClearChat,
@@ -350,6 +352,7 @@ export default function PlanPage({
         currentStep={1}
         userName={userEmail}
         notificationCount={0}
+        onSignOut={onSignOut}
         onStepClick={(i) => {
           const pages = ['home', 'plan', 'confirm'];
           if (pages[i] && pages[i] !== 'plan') onNavigate?.(pages[i]);

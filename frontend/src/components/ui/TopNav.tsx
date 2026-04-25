@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import Logo from './Logo';
 import StepIndicator, { type Step } from './StepIndicator';
 import Avatar from './Avatar';
@@ -11,6 +12,7 @@ export interface TopNavProps {
   notificationCount?: number;
   onNotificationClick?: () => void;
   onAvatarClick?: () => void;
+  onSignOut?: () => void;
   className?: string;
 }
 
@@ -23,8 +25,23 @@ export default function TopNav({
   notificationCount = 0,
   onNotificationClick,
   onAvatarClick,
+  onSignOut,
   className = '',
 }: TopNavProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isMenuOpen]);
+
   return (
     <header
       style={{
@@ -99,29 +116,73 @@ export default function TopNav({
             )}
           </button>
 
-          {/* User avatar */}
+          {/* User avatar + dropdown */}
           {(userAvatar || userName) && (
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                cursor: 'pointer',
-                borderRadius: '50%',
-                transition: 'var(--transition-base)',
-              }}
-              className="hover:opacity-80"
-              aria-label="User menu"
-            >
-              <Avatar
-                src={userAvatar}
-                name={userName}
-                size="sm"
-                online={true}
-              />
-            </button>
+            <div ref={menuRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setIsMenuOpen(prev => !prev)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  borderRadius: '50%',
+                  transition: 'var(--transition-base)',
+                }}
+                className="hover:opacity-80"
+                aria-label="User menu"
+              >
+                <Avatar
+                  src={userAvatar}
+                  name={userName}
+                  size="sm"
+                  online={true}
+                />
+              </button>
+
+              {isMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 10px)',
+                    right: 0,
+                    minWidth: 220,
+                    borderRadius: 'var(--radius-lg)',
+                    border: '1px solid var(--color-border-medium)',
+                    background: '#111321',
+                    boxShadow: 'var(--shadow-lg)',
+                    overflow: 'hidden',
+                    zIndex: 50,
+                  }}
+                >
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+                    Signed in as
+                    <div style={{ marginTop: 3, color: 'var(--color-text-primary)', fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-sm)', wordBreak: 'break-all' }}>
+                      {userName || 'Traveler'}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => { setIsMenuOpen(false); onAvatarClick?.(); }}
+                    style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--color-text-primary)', padding: '10px 12px', cursor: 'pointer', fontSize: 'var(--text-sm)' }}
+                    className="hover:bg-[var(--color-bg-glass)]"
+                  >
+                    Profile
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setIsMenuOpen(false); onSignOut?.(); }}
+                    style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#fca5a5', padding: '10px 12px', cursor: 'pointer', fontSize: 'var(--text-sm)', borderTop: '1px solid var(--color-border)' }}
+                    className="hover:bg-[var(--color-bg-glass)]"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

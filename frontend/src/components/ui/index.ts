@@ -85,3 +85,6 @@ export type { EmptyStateProps } from './EmptyState';
 
 export { default as TotalCostBar } from './TotalCostBar';
 export type { TotalCostBarProps, CostBreakdownItem } from './TotalCostBar';
+
+export { default as BookingDetailModal } from './BookingDetailModal';
+export type { BookingDetailModalProps } from './BookingDetailModal';

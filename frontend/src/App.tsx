@@ -284,6 +284,7 @@ export default function App() {
           userEmail={session?.email}
           accessToken={session?.accessToken}
           onNavigate={navigate}
+          onSignOut={handleSignOut}
           selectedFlight={selectedFlight}
           passengerCount={passengerCount}
           setConfirmedBooking={setConfirmedBooking}
@@ -297,6 +298,7 @@ export default function App() {
           userEmail={session?.email}
           accessToken={session?.accessToken}
           onNavigate={navigate}
+          onSignOut={handleSignOut}
           {...sharedChat}
         />
       )}
