@@ -97,7 +97,7 @@ function NoHotelSlot() {
 interface PlanPageProps {
   userEmail?: string;
   accessToken?: string;
-  onNavigate?: (page: string) => void;
+  onNavigate?: (page: string, searchQuery?: string) => void;
   messages: Message[];
   setMessages: Dispatch<SetStateAction<Message[]>>;
   onClearChat?: () => void;
@@ -140,9 +140,9 @@ export default function PlanPage({
       setMessages(prev => [
         ...prev,
         { id: String(Date.now()), role: 'user' as const, content: text, timestamp: ts },
-        { id: String(Date.now() + 1), role: 'assistant' as const, content: "No problem! Let me take you back so you can search for other flights.", timestamp: ts },
+        { id: String(Date.now() + 1), role: 'assistant' as const, content: "No problem! Taking you back to search for flights.", timestamp: ts },
       ]);
-      setTimeout(() => onNavigate?.('home'), 900);
+      setTimeout(() => onNavigate?.('home', text), 900);
       return;
     }
 
