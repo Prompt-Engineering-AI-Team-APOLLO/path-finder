@@ -131,12 +131,12 @@ export default function PlanPage({
     return raw ? JSON.parse(raw)?.accessToken : (accessToken ?? null);
   };
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (text: string, { skipNavCheck = false }: { skipNavCheck?: boolean } = {}) => {
     const ts = now();
 
     // ── "Search more" intent: navigate back to HomePage ──────────────────────
-    const searchMorePattern = /\b(search|find|look|show).{0,20}(more|again|different|other|else|alternatives|new|another)|(go back|different flight|something else|don't like|start over|new search|cancel booking|never mind)\b/i;
-    if (searchMorePattern.test(text)) {
+    const searchMorePattern = /\b(find|search|look|show|get)\b.{0,40}\b(flight|flights|ticket|tickets)\b|\b(search|find|look|show).{0,20}(more|again|different|other|else|alternatives|new|another)|(go back|different flight|something else|don't like|start over|new search|cancel booking|never mind)\b/i;
+    if (!skipNavCheck && searchMorePattern.test(text)) {
       setMessages(prev => [
         ...prev,
         { id: String(Date.now()), role: 'user' as const, content: text, timestamp: ts },
@@ -242,7 +242,7 @@ export default function PlanPage({
     });
     const cabinLabel = selectedFlight.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     const triggerText = `I'd like to book the ${selectedFlight.airline} flight ${selectedFlight.flight_number} from ${selectedFlight.origin_city} (${selectedFlight.origin}) to ${selectedFlight.destination_city} (${selectedFlight.destination}) on ${dateStr} for ${passengerCount} passenger(s) in ${cabinLabel} class at $${selectedFlight.price_per_person}/person. Please search for this flight and help me complete the booking by collecting my passenger details.`;
-    handleSend(triggerText);
+    handleSend(triggerText, { skipNavCheck: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFlight?.offer_id]);
 

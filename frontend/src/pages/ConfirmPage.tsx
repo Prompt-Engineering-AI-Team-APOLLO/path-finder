@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   TopNav,
   PageLayout,
@@ -72,6 +72,7 @@ function fmtFullDate(iso: string) {
 interface ConfirmPageProps {
   bookingData?: BookingRead;
   userEmail?: string;
+  accessToken?: string;
   onNavigate?: (page: string) => void;
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
@@ -81,6 +82,7 @@ interface ConfirmPageProps {
 export default function ConfirmPage({
   bookingData,
   userEmail,
+  accessToken,
   onNavigate,
   messages,
   setMessages,
@@ -88,12 +90,39 @@ export default function ConfirmPage({
 }: ConfirmPageProps) {
 
   const [isTyping, setIsTyping] = useState(false);
+  const [allBookings, setAllBookings] = useState<BookingRead[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(false);
+
+  // Fetch all bookings for this account on mount
+  useEffect(() => {
+    const token = accessToken
+      || (() => {
+        const raw = localStorage.getItem('pathfinder_auth_session') || sessionStorage.getItem('pathfinder_auth_session');
+        return raw ? JSON.parse(raw)?.accessToken : null;
+      })();
+    if (!token) return;
+
+    setLoadingBookings(true);
+    fetch(`${API_BASE}/flights/bookings`, {
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: BookingRead[]) => {
+        // Sort newest first
+        const sorted = [...data].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setAllBookings(sorted);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingBookings(false));
+  }, [accessToken]);
 
   const handleSend = async (text: string) => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     // Detect search / new flight intent → navigate home
-    const searchPattern = /\b(find|search|look|book|show|get)\s+(a\s+)?(new\s+)?(flight|flights|ticket|tickets|trip|another)|(search again|new search|go back|start over|search more)\b/i;
+    const searchPattern = /\b(find|search|look|show|get)\b.{0,40}\b(flight|flights|ticket|tickets)\b|\b(search|find|look|show).{0,20}(more|again|different|other|else|alternatives|new|another)|(go back|new search|start over|search more|find me a flight)\b/i;
     if (searchPattern.test(text)) {
       setMessages(prev => [
         ...prev,
@@ -189,106 +218,78 @@ export default function ConfirmPage({
     />
   );
 
+  /* ── Derived: use API-fetched list or fall back to single prop ── */
+  const displayBookings = allBookings.length > 0 ? allBookings : (bookingData ? [bookingData] : []);
+  const latestBooking = displayBookings[0] ?? null;
+  const olderBookings = displayBookings.slice(1);
+  const totalSpend = displayBookings.reduce((sum, b) => sum + b.total_price, 0);
+
   /* ── Right panel ── */
   const rightPanel = (
     <div className="surface-light" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-bg-page-light)' }}>
       <div style={{ padding: '20px 20px 0', flex: 1, overflow: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', margin: 0 }}>
-            Trip Summary
+            My Bookings
           </h2>
-          {bookingData && <Badge variant="confirmed" dot>Confirmed</Badge>}
+          {displayBookings.length > 0 && (
+            <Badge variant="confirmed" dot>{displayBookings.length} confirmed</Badge>
+          )}
         </div>
 
-        {bookingData ? (
-          <>
-            <TripSummaryItem
-              icon={<PlaneIcon />}
-              label="Flights"
-              value={`${bookingData.outbound_origin} → ${bookingData.outbound_destination} · ${fmtFullDate(bookingData.outbound_departure_at)}`}
-              price={bookingData.total_price}
-            />
+        {loadingBookings && (
+          <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textAlign: 'center', padding: '12px 0' }}>
+            Loading bookings...
+          </p>
+        )}
 
-            {/* Booking reference */}
-            <div
-              style={{
-                marginTop: 20,
-                padding: '14px',
-                background: 'var(--color-primary-subtle)',
-                border: '1px solid var(--color-primary-border)',
-                borderRadius: 'var(--radius-lg)',
-              }}
-            >
-              <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)', margin: '0 0 6px' }}>
-                Booking Reference
-              </p>
-              <p style={{ color: 'var(--color-primary)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)', fontFamily: 'monospace', margin: 0 }}>
-                {bookingData.booking_reference}
-              </p>
-              <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '4px 0 0' }}>
-                Confirmation sent to {bookingData.contact_email}
-              </p>
-            </div>
-
-            {/* Passengers */}
-            {bookingData.passengers.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wider)', margin: '0 0 8px' }}>
-                  Passengers
-                </p>
-                {bookingData.passengers.map((p, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: '10px 12px',
-                      background: 'var(--color-bg-surface)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-lg)',
-                      marginBottom: 6,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--color-primary-subtle)', border: '1px solid var(--color-primary-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <span style={{ color: 'var(--color-primary)', fontSize: 10, fontWeight: 700 }}>{i + 1}</span>
-                    </div>
-                    <div>
-                      <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-xs)', fontWeight: 600, margin: 0 }}>
-                        {p.first_name} {p.last_name}
-                      </p>
-                      {p.nationality && (
-                        <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 10, margin: '1px 0 0' }}>{p.nationality}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
+        {displayBookings.length > 0 ? (
+          displayBookings.map((b, idx) => (
+            <div key={b.booking_reference} style={{ marginBottom: 14 }}>
+              <TripSummaryItem
+                icon={<PlaneIcon />}
+                label={idx === 0 ? 'Latest · ' + b.outbound_origin + ' → ' + b.outbound_destination : b.outbound_origin + ' → ' + b.outbound_destination}
+                value={fmtFullDate(b.outbound_departure_at)}
+                price={b.total_price}
+              />
+              <div style={{
+                marginTop: 6,
+                padding: '8px 12px',
+                background: idx === 0 ? 'var(--color-primary-subtle)' : 'var(--color-bg-surface)',
+                border: `1px solid ${idx === 0 ? 'var(--color-primary-border)' : 'var(--color-border)'}`,
+                borderRadius: 'var(--radius-md)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span style={{ color: idx === 0 ? 'var(--color-primary)' : 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', fontFamily: 'monospace' }}>
+                  {b.booking_reference}
+                </span>
+                <span style={{ color: 'var(--color-text-dark-muted)', fontSize: 10 }}>
+                  {b.passenger_count} pax · {b.cabin_class.replace(/_/g, ' ')}
+                </span>
               </div>
-            )}
-          </>
-        ) : (
-          /* No booking state */
+            </div>
+          ))
+        ) : !loadingBookings ? (
           <div style={{ padding: '32px 16px', textAlign: 'center' }}>
             <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-sm)', margin: 0, lineHeight: 1.6 }}>
-              No confirmed booking yet. Search for a flight to get started.
+              No confirmed bookings yet.
             </p>
           </div>
-        )}
+        ) : null}
       </div>
 
       <TotalCostBar
-        label="Total Cost"
-        totalPrice={bookingData?.total_price ?? 0}
-        subLabel={bookingData
-          ? `${bookingData.passenger_count} passenger${bookingData.passenger_count > 1 ? 's' : ''} · taxes & fees included`
-          : 'No booking confirmed'
-        }
-        ctaLabel="Download PDF"
-        ctaDisabled={!bookingData}
-        breakdown={bookingData
-          ? [{ label: `${bookingData.outbound_airline} ${bookingData.outbound_flight_number} (${bookingData.passenger_count} pax)`, amount: bookingData.total_price }]
-          : []
-        }
+        label={displayBookings.length > 1 ? `Total Spent (${displayBookings.length} bookings)` : 'Total Cost'}
+        totalPrice={totalSpend}
+        subLabel={displayBookings.length > 0 ? 'All bookings · taxes & fees included' : 'No booking confirmed'}
+        ctaLabel="Search More Flights"
+        ctaDisabled={false}
+        breakdown={displayBookings.map(b => ({
+          label: `${b.outbound_airline} ${b.outbound_flight_number} (${b.passenger_count} pax)`,
+          amount: b.total_price,
+        }))}
       />
     </div>
   );
@@ -320,172 +321,124 @@ export default function ConfirmPage({
           className="surface-light"
           style={{ padding: '28px 28px', background: 'var(--color-bg-page-light)', minHeight: '100%' }}
         >
-          {bookingData ? (
-            /* ── Confirmed booking view ── */
+          {latestBooking ? (
             <>
-              {/* Hero */}
-              <div
-                style={{
-                  textAlign: 'center',
-                  marginBottom: 28,
-                  padding: '24px',
-                  background: 'var(--color-bg-surface)',
-                  borderRadius: 'var(--radius-2xl)',
-                  border: '1.5px solid var(--color-green-border)',
-                  boxShadow: 'var(--shadow-card)',
-                }}
-              >
-                <div
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: '50%',
-                    background: 'var(--color-green-bg)',
-                    border: '2px solid var(--color-green-border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0 auto 14px',
-                  }}
-                >
+              {/* ── Hero ── */}
+              <div style={{ textAlign: 'center', marginBottom: 28, padding: '24px', background: 'var(--color-bg-surface)', borderRadius: 'var(--radius-2xl)', border: '1.5px solid var(--color-green-border)', boxShadow: 'var(--shadow-card)' }}>
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--color-green-bg)', border: '2px solid var(--color-green-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
                   </svg>
                 </div>
                 <h1 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-extrabold)', letterSpacing: 'var(--tracking-tight)', margin: '0 0 6px' }}>
-                  Booking Confirmed!
+                  {displayBookings.length > 1 ? `${displayBookings.length} Bookings Confirmed!` : 'Booking Confirmed!'}
                 </h1>
                 <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: 0 }}>
-                  Your flight from {bookingData.outbound_origin_city} to {bookingData.outbound_destination_city} is confirmed.
+                  {latestBooking.outbound_origin_city} → {latestBooking.outbound_destination_city} · latest booking
                 </p>
                 <p style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', fontFamily: 'monospace', margin: '8px 0 0' }}>
-                  Ref: {bookingData.booking_reference}
+                  Ref: {latestBooking.booking_reference}
                 </p>
               </div>
 
-              {/* Flight confirmation card */}
-              <SectionHeader icon={<PlaneIcon />} heading="Your Flight" theme="light" />
+              {/* ── Latest booking detail ── */}
+              <SectionHeader icon={<PlaneIcon />} heading="Latest Booking" theme="light" />
               <div style={{ marginTop: 14, marginBottom: 24 }}>
                 <ConfirmationCard
-                  airline={bookingData.outbound_airline}
-                  flightNumber={bookingData.outbound_flight_number}
-                  cabinClass={bookingData.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                  departureTime={fmtTime(bookingData.outbound_departure_at)}
-                  departureCode={bookingData.outbound_origin}
-                  departureCity={bookingData.outbound_origin_city}
-                  arrivalTime={fmtTime(bookingData.outbound_arrival_at)}
-                  arrivalCode={bookingData.outbound_destination}
-                  arrivalCity={bookingData.outbound_destination_city}
-                  duration={fmtDuration(bookingData.outbound_duration_minutes)}
-                  date={fmtFullDate(bookingData.outbound_departure_at)}
-                  bookingRef={bookingData.booking_reference}
+                  airline={latestBooking.outbound_airline}
+                  flightNumber={latestBooking.outbound_flight_number}
+                  cabinClass={latestBooking.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                  departureTime={fmtTime(latestBooking.outbound_departure_at)}
+                  departureCode={latestBooking.outbound_origin}
+                  departureCity={latestBooking.outbound_origin_city}
+                  arrivalTime={fmtTime(latestBooking.outbound_arrival_at)}
+                  arrivalCode={latestBooking.outbound_destination}
+                  arrivalCity={latestBooking.outbound_destination_city}
+                  duration={fmtDuration(latestBooking.outbound_duration_minutes)}
+                  date={fmtFullDate(latestBooking.outbound_departure_at)}
+                  bookingRef={latestBooking.booking_reference}
                 />
               </div>
 
-              {/* Passengers */}
+              {/* ── Passengers for latest booking ── */}
               <SectionHeader icon={
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
                 </svg>
               } heading="Passengers" theme="light" />
-              <div style={{ marginTop: 14, marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {bookingData.passengers.map((p, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: '16px 20px',
-                      background: 'var(--color-bg-surface)',
-                      border: '1.5px solid var(--color-border)',
-                      borderRadius: 'var(--radius-xl)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 14,
-                      boxShadow: 'var(--shadow-sm)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: '50%',
-                        background: 'var(--color-primary-subtle)',
-                        border: '1.5px solid var(--color-primary-border)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
+              <div style={{ marginTop: 14, marginBottom: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {latestBooking.passengers.map((p, i) => (
+                  <div key={i} style={{ padding: '16px 20px', background: 'var(--color-bg-surface)', border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-xl)', display: 'flex', alignItems: 'center', gap: 14, boxShadow: 'var(--shadow-sm)' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-primary-subtle)', border: '1.5px solid var(--color-primary-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{i + 1}</span>
                     </div>
                     <div>
-                      <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', margin: 0 }}>
-                        {p.first_name} {p.last_name}
-                      </p>
+                      <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', margin: 0 }}>{p.first_name} {p.last_name}</p>
                       <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '3px 0 0' }}>
-                        DOB: {p.date_of_birth}
-                        {p.nationality ? ` · ${p.nationality}` : ''}
-                        {p.passport_number ? ` · ${p.passport_number}` : ''}
+                        DOB: {p.date_of_birth}{p.nationality ? ` · ${p.nationality}` : ''}{p.passport_number ? ` · ${p.passport_number}` : ''}
                       </p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Actions */}
+              {/* ── Previous bookings ── */}
+              {olderBookings.length > 0 && (
+                <>
+                  <SectionHeader icon={<PlaneIcon />} heading={`Previous Bookings (${olderBookings.length})`} theme="light" />
+                  <div style={{ marginTop: 14, marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {olderBookings.map(b => (
+                      <div key={b.booking_reference} style={{ padding: '16px 20px', background: 'var(--color-bg-surface)', border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-sm)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 28, height: 28, borderRadius: 'var(--radius-md)', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                            </div>
+                            <div>
+                              <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', margin: 0 }}>{b.outbound_airline} {b.outbound_flight_number}</p>
+                              <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '1px 0 0' }}>{b.outbound_origin} → {b.outbound_destination} · {fmtFullDate(b.outbound_departure_at)}</p>
+                            </div>
+                          </div>
+                          <Badge variant="confirmed">Confirmed</Badge>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--color-border)' }}>
+                          <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', fontFamily: 'monospace' }}>{b.booking_reference}</span>
+                          <span style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)' }}>
+                            {b.passenger_count} pax · ${b.total_price.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* ── Actions ── */}
               <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
                 <Button variant="primary" size="md" icon={<DownloadIcon />} iconPosition="left">
                   Download Itinerary
                 </Button>
-                <Button variant="secondary" size="md">
-                  Share Trip
-                </Button>
+                <Button variant="secondary" size="md">Share Trip</Button>
                 <Button variant="ghost" size="md" onClick={() => onNavigate?.('home')}>
                   Search More Flights
                 </Button>
               </div>
             </>
-          ) : (
-            /* ── Empty state: no booking yet ── */
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                minHeight: '60vh',
-                textAlign: 'center',
-                gap: 20,
-              }}
-            >
-              <div
-                style={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: '50%',
-                  background: 'var(--color-bg-surface)',
-                  border: '1.5px solid var(--color-border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--color-text-dark-muted)',
-                }}
-              >
+          ) : !loadingBookings ? (
+            /* ── Empty state ── */
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center', gap: 20 }}>
+              <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--color-bg-surface)', border: '1.5px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-dark-muted)' }}>
                 <SearchIcon />
               </div>
               <div>
-                <h2 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', margin: '0 0 8px' }}>
-                  No Booking Yet
-                </h2>
+                <h2 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', margin: '0 0 8px' }}>No Bookings Yet</h2>
                 <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 24px', maxWidth: 340, lineHeight: 1.6 }}>
-                  Search for a flight, select your preferred option, and complete the booking form to see your confirmation here.
+                  Search for a flight and complete a booking to see your confirmations here.
                 </p>
-                <Button variant="primary" size="md" onClick={() => onNavigate?.('home')}>
-                  Search Flights →
-                </Button>
+                <Button variant="primary" size="md" onClick={() => onNavigate?.('home')}>Search Flights →</Button>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </PageLayout>
     </>

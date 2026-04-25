@@ -288,6 +288,7 @@ export default function App() {
         <ConfirmPage
           bookingData={confirmedBooking ?? undefined}
           userEmail={session?.email}
+          accessToken={session?.accessToken}
           onNavigate={navigate}
           {...sharedChat}
         />
