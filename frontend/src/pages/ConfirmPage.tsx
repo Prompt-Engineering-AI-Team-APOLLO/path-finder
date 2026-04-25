@@ -4,7 +4,6 @@ import {
   PageLayout,
   CompanionPanel,
   ConfirmationCard,
-  TripSummaryItem,
   TotalCostBar,
   Badge,
   Button,
@@ -46,6 +45,26 @@ const SearchIcon = () => (
     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
   </svg>
 );
+const CloseIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+);
+const UserIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+  </svg>
+);
+const MailIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+  </svg>
+);
+const ChevronIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6"/>
+  </svg>
+);
 
 const CONFIRM_STEPS = [
   { number: '01', label: 'Welcome' },
@@ -64,6 +83,277 @@ function fmtDuration(minutes: number) {
 }
 function fmtFullDate(iso: string) {
   return new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' });
+}
+function fmtShortDate(iso: string) {
+  return new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function statusStyle(status: string): { color: string; bg: string; border: string; label: string } {
+  if (status === 'cancelled') return { color: '#E53E3E', bg: 'rgba(229,62,62,0.1)', border: 'rgba(229,62,62,0.3)', label: 'Cancelled' };
+  if (status === 'modified')  return { color: '#D97706', bg: 'rgba(217,119,6,0.1)', border: 'rgba(217,119,6,0.3)', label: 'Modified' };
+  return { color: '#22C55E', bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', label: 'Confirmed' };
+}
+
+/* ─────────────────────────────────────────────
+   BookingDetailModal
+───────────────────────────────────────────── */
+function BookingDetailModal({ booking, onClose, loading = false }: { booking: BookingRead; onClose: () => void; loading?: boolean }) {
+  // Close on backdrop click
+  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  const stopLabel = booking.outbound_stops === 0 ? 'Nonstop' : booking.outbound_stops === 1 ? '1 stop' : `${booking.outbound_stops} stops`;
+  const ss = statusStyle(booking.status);
+
+  return (
+    <div
+      onClick={handleBackdrop}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '24px 16px',
+      }}
+    >
+      <div
+        className="surface-light"
+        style={{
+          background: '#FFFFFF',
+          borderRadius: 'var(--radius-2xl)',
+          position: 'relative',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.35)',
+          width: '100%',
+          maxWidth: 540,
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          border: '1.5px solid rgba(112,71,235,0.18)',
+        }}
+      >
+        {/* ── Modal header ── */}
+        <div style={{
+          padding: '18px 24px',
+          borderBottom: '1px solid rgba(112,71,235,0.15)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
+          background: 'linear-gradient(135deg, #7047EB 0%, #5B8AFF 100%)',
+        }}>
+          <div>
+            <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: 'var(--text-xs)', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
+              Booking Details
+            </p>
+            <p style={{ color: '#FFFFFF', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-extrabold)', margin: 0, fontFamily: 'monospace', letterSpacing: '0.04em' }}>
+              {booking.booking_reference}
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              padding: '4px 10px', borderRadius: 'var(--radius-full)',
+              background: ss.bg, border: `1px solid ${ss.border}`,
+              color: ss.color, fontSize: 11, fontWeight: 800,
+              textTransform: 'uppercase', letterSpacing: '0.07em',
+            }}>{ss.label}</span>
+            <button
+              onClick={onClose}
+              style={{
+                width: 32, height: 32, borderRadius: 'var(--radius-full)',
+                border: '1px solid rgba(255,255,255,0.3)',
+                background: 'rgba(255,255,255,0.15)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#FFFFFF',
+              }}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Loading bar ── */}
+        {loading && (
+          <div style={{ height: 3, background: 'linear-gradient(90deg, #7047EB, #5B8AFF, #7047EB)', backgroundSize: '200% 100%', animation: 'shimmer 1.2s linear infinite' }} />
+        )}
+
+        {/* ── Scrollable body ── */}
+        <div style={{ overflowY: 'auto', flex: 1, padding: '24px', background: '#FFFFFF' }}>
+
+          {/* Flight details */}
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>
+            Flight
+          </p>
+          <div style={{
+            background: 'var(--color-bg-surface)',
+            border: '1.5px solid var(--color-border-medium)',
+            borderRadius: 'var(--radius-xl)',
+            overflow: 'hidden',
+            marginBottom: 24,
+          }}>
+            {/* Airline row */}
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-md)', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                </div>
+                <div>
+                  <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', margin: 0 }}>{booking.outbound_airline}</p>
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', margin: '2px 0 0' }}>{booking.outbound_flight_number}</p>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cabin</p>
+                <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-xs)', fontWeight: 700, margin: '2px 0 0' }}>
+                  {booking.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                </p>
+              </div>
+            </div>
+
+            {/* Route */}
+            <div style={{ padding: '18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ minWidth: 80 }}>
+                <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-extrabold)', margin: 0, letterSpacing: 'var(--tracking-tight)' }}>{fmtTime(booking.outbound_departure_at)}</p>
+                <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)', margin: '2px 0 0' }}>{booking.outbound_origin}</p>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', margin: '2px 0 0' }}>{booking.outbound_origin_city}</p>
+              </div>
+
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', margin: 0 }}>{fmtDuration(booking.outbound_duration_minutes)}</p>
+                <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', border: '2px solid var(--color-primary)', flexShrink: 0 }} />
+                  <div style={{ flex: 1, borderTop: '2px dashed var(--color-primary-border)' }} />
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--color-primary)" style={{ flexShrink: 0 }}><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                  <div style={{ flex: 1, borderTop: '2px dashed var(--color-primary-border)' }} />
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', border: '2px solid var(--color-primary)', flexShrink: 0 }} />
+                </div>
+                <p style={{ color: booking.outbound_stops === 0 ? 'var(--color-green)' : 'var(--color-amber)', fontSize: 10, margin: 0, fontWeight: 700 }}>{stopLabel}</p>
+              </div>
+
+              <div style={{ minWidth: 80, textAlign: 'right' }}>
+                <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-extrabold)', margin: 0, letterSpacing: 'var(--tracking-tight)' }}>{fmtTime(booking.outbound_arrival_at)}</p>
+                <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)', margin: '2px 0 0' }}>{booking.outbound_destination}</p>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', margin: '2px 0 0' }}>{booking.outbound_destination_city}</p>
+              </div>
+            </div>
+
+            {/* Date row */}
+            <div style={{ padding: '12px 18px', borderTop: '1px dashed var(--color-border-medium)', display: 'flex', gap: 24 }}>
+              <div>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Date</p>
+                <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-xs)', fontWeight: 700, margin: '3px 0 0' }}>{fmtFullDate(booking.outbound_departure_at)}</p>
+              </div>
+              <div>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Booking Ref</p>
+                <p style={{ color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 700, margin: '3px 0 0', fontFamily: 'monospace' }}>{booking.booking_reference}</p>
+              </div>
+              <div>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Passengers</p>
+                <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-xs)', fontWeight: 700, margin: '3px 0 0' }}>{booking.passenger_count}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Passengers */}
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>
+            Passengers ({booking.passengers.length})
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+            {booking.passengers.map((p, i) => (
+              <div key={i} style={{
+                padding: '14px 16px',
+                background: 'var(--color-bg-surface)',
+                border: '1.5px solid var(--color-border)',
+                borderRadius: 'var(--radius-xl)',
+                display: 'flex', alignItems: 'center', gap: 12,
+              }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: '50%',
+                  background: 'var(--color-primary-subtle)',
+                  border: '1.5px solid var(--color-primary-border)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{i + 1}</span>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', margin: 0 }}>
+                    {p.first_name} {p.last_name}
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', marginTop: 4 }}>
+                    <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', margin: 0 }}>
+                      DOB: <span style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>{p.date_of_birth}</span>
+                    </p>
+                    {p.nationality && (
+                      <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', margin: 0 }}>
+                        Nationality: <span style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>{p.nationality}</span>
+                      </p>
+                    )}
+                    {p.passport_number && (
+                      <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', margin: 0 }}>
+                        Passport: <span style={{ color: 'var(--color-text-secondary)', fontWeight: 600, fontFamily: 'monospace' }}>{p.passport_number}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Contact info */}
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>
+            Contact
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
+            <div style={{
+              padding: '12px 16px',
+              background: 'var(--color-bg-surface)',
+              border: '1.5px solid var(--color-border)',
+              borderRadius: 'var(--radius-xl)',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <span style={{ color: 'var(--color-text-muted)' }}><MailIcon /></span>
+              <span style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 600 }}>{booking.contact_email}</span>
+            </div>
+            {booking.contact_phone && (
+              <div style={{
+                padding: '12px 16px',
+                background: 'var(--color-bg-surface)',
+                border: '1.5px solid var(--color-border)',
+                borderRadius: 'var(--radius-xl)',
+                display: 'flex', alignItems: 'center', gap: 10,
+              }}>
+                <span style={{ color: 'var(--color-text-muted)' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.01 1.18 2 2 0 012 .01h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
+                  </svg>
+                </span>
+                <span style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 600 }}>{booking.contact_phone}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Price summary */}
+          <div style={{
+            padding: '16px 18px',
+            background: 'var(--color-primary-subtle)',
+            border: '1.5px solid var(--color-primary-border)',
+            borderRadius: 'var(--radius-xl)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>Total Paid</p>
+              <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-extrabold)', margin: '4px 0 0', letterSpacing: 'var(--tracking-tight)' }}>
+                {booking.currency === 'USD' ? '$' : booking.currency}{booking.total_price.toLocaleString()}
+              </p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>Booked on</p>
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', fontWeight: 600, margin: '4px 0 0' }}>{fmtShortDate(booking.created_at)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ─────────────────────────────────────────────
@@ -92,9 +382,10 @@ export default function ConfirmPage({
   const [isTyping, setIsTyping] = useState(false);
   const [allBookings, setAllBookings] = useState<BookingRead[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
+  const [detailBooking, setDetailBooking] = useState<BookingRead | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
-  // Fetch all bookings for this account on mount
-  useEffect(() => {
+  const fetchBookings = () => {
     const token = accessToken
       || (() => {
         const raw = localStorage.getItem('pathfinder_auth_session') || sessionStorage.getItem('pathfinder_auth_session');
@@ -108,7 +399,6 @@ export default function ConfirmPage({
     })
       .then(r => r.ok ? r.json() : [])
       .then((data: BookingRead[]) => {
-        // Sort newest first
         const sorted = [...data].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
@@ -116,7 +406,38 @@ export default function ConfirmPage({
       })
       .catch(() => {})
       .finally(() => setLoadingBookings(false));
+  };
+
+  // Fetch all bookings on mount
+  useEffect(() => {
+    fetchBookings();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
+
+  // Open modal with a fresh API fetch so details are always up-to-date
+  const openDetail = (ref: string) => {
+    const raw = localStorage.getItem('pathfinder_auth_session') || sessionStorage.getItem('pathfinder_auth_session');
+    const token = accessToken || (raw ? JSON.parse(raw)?.accessToken : null);
+
+    // Show modal immediately with whatever we have in local state (instant feedback)
+    const cached = allBookings.find(b => b.booking_reference === ref) ?? null;
+    setDetailBooking(cached);
+    setLoadingDetail(true);
+
+    fetch(`${API_BASE}/flights/bookings/${ref}`, {
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then((fresh: BookingRead | null) => {
+        if (fresh) {
+          setDetailBooking(fresh);
+          // Also update the entry in allBookings so the list reflects the latest status
+          setAllBookings(prev => prev.map(b => b.booking_reference === fresh.booking_reference ? fresh : b));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingDetail(false));
+  };
 
   const handleSend = async (text: string) => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -179,7 +500,13 @@ export default function ConfirmPage({
         }
       }
 
-      // If agent response itself suggests searching, navigate home after reading it
+      // If the agent mentioned any booking reference, re-fetch the list to pick up
+      // status changes (cancelled, modified, etc.) reliably — no fragile text matching.
+      const mentionsBookingRef = /\bPF-[A-Z0-9]{4,10}\b/.test(fullResponse);
+      if (mentionsBookingRef) {
+        setTimeout(() => fetchBookings(), 800);
+      }
+
       const agentSuggestsSearch = /\b(search|find|look).{0,30}(flight|new trip|another)\b/i.test(fullResponse);
       if (agentSuggestsSearch) {
         setTimeout(() => onNavigate?.('home'), 2000);
@@ -218,11 +545,15 @@ export default function ConfirmPage({
     />
   );
 
-  /* ── Derived: use API-fetched list or fall back to single prop ── */
+  /* ── Derived ── */
   const displayBookings = allBookings.length > 0 ? allBookings : (bookingData ? [bookingData] : []);
-  const latestBooking = displayBookings[0] ?? null;
-  const olderBookings = displayBookings.slice(1);
-  const totalSpend = displayBookings.reduce((sum, b) => sum + b.total_price, 0);
+  // Latest = most recent non-cancelled booking; fall back to the very latest if all are cancelled
+  const latestBooking = displayBookings.find(b => b.status !== 'cancelled') ?? displayBookings[0] ?? null;
+  const olderBookings = displayBookings.filter(b => b !== latestBooking);
+  const activeBookings = displayBookings.filter(b => b.status !== 'cancelled');
+  const confirmedCount = activeBookings.length;
+  // Exclude cancelled bookings from total spend
+  const totalSpend = activeBookings.reduce((sum, b) => sum + b.total_price, 0);
 
   /* ── Right panel ── */
   const rightPanel = (
@@ -232,8 +563,8 @@ export default function ConfirmPage({
           <h2 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', margin: 0 }}>
             My Bookings
           </h2>
-          {displayBookings.length > 0 && (
-            <Badge variant="confirmed" dot>{displayBookings.length} confirmed</Badge>
+          {confirmedCount > 0 && (
+            <Badge variant="confirmed" dot>{confirmedCount} confirmed</Badge>
           )}
         </div>
 
@@ -244,33 +575,69 @@ export default function ConfirmPage({
         )}
 
         {displayBookings.length > 0 ? (
-          displayBookings.map((b, idx) => (
-            <div key={b.booking_reference} style={{ marginBottom: 14 }}>
-              <TripSummaryItem
-                icon={<PlaneIcon />}
-                label={idx === 0 ? 'Latest · ' + b.outbound_origin + ' → ' + b.outbound_destination : b.outbound_origin + ' → ' + b.outbound_destination}
-                value={fmtFullDate(b.outbound_departure_at)}
-                price={b.total_price}
-              />
-              <div style={{
-                marginTop: 6,
-                padding: '8px 12px',
-                background: idx === 0 ? 'var(--color-primary-subtle)' : 'var(--color-bg-surface)',
-                border: `1px solid ${idx === 0 ? 'var(--color-primary-border)' : 'var(--color-border)'}`,
-                borderRadius: 'var(--radius-md)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <span style={{ color: idx === 0 ? 'var(--color-primary)' : 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', fontFamily: 'monospace' }}>
-                  {b.booking_reference}
-                </span>
-                <span style={{ color: 'var(--color-text-dark-muted)', fontSize: 10 }}>
-                  {b.passenger_count} pax · {b.cabin_class.replace(/_/g, ' ')}
-                </span>
-              </div>
-            </div>
-          ))
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {displayBookings.map((b, idx) => {
+              const ss = statusStyle(b.status);
+              const isCancelled = b.status === 'cancelled';
+              return (
+                <button
+                  key={b.booking_reference}
+                  type="button"
+                  onClick={() => openDetail(b.booking_reference)}
+                  style={{
+                    width: '100%', textAlign: 'left', cursor: 'pointer',
+                    padding: '12px 14px',
+                    background: isCancelled ? 'rgba(229,62,62,0.04)' : idx === 0 ? 'var(--color-primary-subtle)' : 'var(--color-bg-surface)',
+                    border: `1.5px solid ${isCancelled ? 'rgba(229,62,62,0.25)' : idx === 0 ? 'var(--color-primary-border)' : 'var(--color-border)'}`,
+                    borderRadius: 'var(--radius-xl)',
+                    transition: 'var(--transition-base)',
+                    opacity: isCancelled ? 0.75 : 1,
+                  }}
+                  className="group hover:border-[var(--color-primary-border)] hover:bg-[var(--color-bg-card-hover)]"
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        {idx === 0 && !isCancelled && (
+                          <span style={{
+                            padding: '1px 6px', borderRadius: 'var(--radius-full)',
+                            background: 'var(--color-primary)', color: 'white',
+                            fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em',
+                          }}>Latest</span>
+                        )}
+                        <span style={{
+                          padding: '1px 7px', borderRadius: 'var(--radius-full)',
+                          background: ss.bg, border: `1px solid ${ss.border}`,
+                          color: ss.color, fontSize: 9, fontWeight: 800,
+                          textTransform: 'uppercase', letterSpacing: '0.07em',
+                        }}>{ss.label}</span>
+                      </div>
+                      <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 700, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                        {b.outbound_origin} → {b.outbound_destination}
+                      </p>
+                      <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '2px 0 0' }}>
+                        {b.outbound_airline} · {fmtShortDate(b.outbound_departure_at)}
+                      </p>
+                      <p style={{ color: idx === 0 && !isCancelled ? 'var(--color-primary)' : 'var(--color-text-dark-muted)', fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'monospace', margin: '4px 0 0' }}>
+                        {b.booking_reference}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                      <span style={{ color: isCancelled ? 'var(--color-text-dark-muted)' : 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 700, textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                        ${b.total_price.toLocaleString()}
+                      </span>
+                      <span style={{ color: 'var(--color-text-dark-muted)', fontSize: 10 }}>
+                        {b.passenger_count} pax
+                      </span>
+                      <span style={{ color: 'var(--color-text-dark-muted)' }} className="group-hover:text-[var(--color-primary)]">
+                        <ChevronIcon />
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         ) : !loadingBookings ? (
           <div style={{ padding: '32px 16px', textAlign: 'center' }}>
             <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 'var(--text-sm)', margin: 0, lineHeight: 1.6 }}>
@@ -281,12 +648,12 @@ export default function ConfirmPage({
       </div>
 
       <TotalCostBar
-        label={displayBookings.length > 1 ? `Total Spent (${displayBookings.length} bookings)` : 'Total Cost'}
+        label={activeBookings.length > 1 ? `Total Spent (${activeBookings.length} active)` : 'Total Cost'}
         totalPrice={totalSpend}
-        subLabel={displayBookings.length > 0 ? 'All bookings · taxes & fees included' : 'No booking confirmed'}
+        subLabel={activeBookings.length > 0 ? 'Active bookings only · taxes & fees included' : 'No active bookings'}
         ctaLabel="Search More Flights"
         ctaDisabled={false}
-        breakdown={displayBookings.map(b => ({
+        breakdown={activeBookings.map(b => ({
           label: `${b.outbound_airline} ${b.outbound_flight_number} (${b.passenger_count} pax)`,
           amount: b.total_price,
         }))}
@@ -324,26 +691,41 @@ export default function ConfirmPage({
           {latestBooking ? (
             <>
               {/* ── Hero ── */}
-              <div style={{ textAlign: 'center', marginBottom: 28, padding: '24px', background: 'var(--color-bg-surface)', borderRadius: 'var(--radius-2xl)', border: '1.5px solid var(--color-green-border)', boxShadow: 'var(--shadow-card)' }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--color-green-bg)', border: '2px solid var(--color-green-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                  </svg>
-                </div>
-                <h1 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-extrabold)', letterSpacing: 'var(--tracking-tight)', margin: '0 0 6px' }}>
-                  {displayBookings.length > 1 ? `${displayBookings.length} Bookings Confirmed!` : 'Booking Confirmed!'}
-                </h1>
-                <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: 0 }}>
-                  {latestBooking.outbound_origin_city} → {latestBooking.outbound_destination_city} · latest booking
-                </p>
-                <p style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', fontFamily: 'monospace', margin: '8px 0 0' }}>
-                  Ref: {latestBooking.booking_reference}
-                </p>
-              </div>
+              {(() => {
+                const lss = statusStyle(latestBooking.status);
+                const heroIcon = latestBooking.status === 'cancelled'
+                  ? <path d="M18 6L6 18M6 6l12 12" />
+                  : latestBooking.status === 'modified'
+                    ? <><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></>
+                    : <><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>;
+                const heroTitle = latestBooking.status === 'cancelled'
+                  ? 'Booking Cancelled'
+                  : latestBooking.status === 'modified'
+                    ? 'Booking Modified'
+                    : confirmedCount > 1 ? `${confirmedCount} Bookings Confirmed!` : 'Booking Confirmed!';
+                return (
+                  <div style={{ textAlign: 'center', marginBottom: 28, padding: '24px', background: 'var(--color-bg-surface)', borderRadius: 'var(--radius-2xl)', border: `1.5px solid ${lss.border}`, boxShadow: 'var(--shadow-card)' }}>
+                    <div style={{ width: 52, height: 52, borderRadius: '50%', background: lss.bg, border: `2px solid ${lss.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={lss.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        {heroIcon}
+                      </svg>
+                    </div>
+                    <h1 style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-extrabold)', letterSpacing: 'var(--tracking-tight)', margin: '0 0 6px' }}>
+                      {heroTitle}
+                    </h1>
+                    <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-sm)', margin: 0 }}>
+                      {latestBooking.outbound_origin_city} → {latestBooking.outbound_destination_city} · {latestBooking.status}
+                    </p>
+                    <p style={{ color: lss.color, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', fontFamily: 'monospace', margin: '8px 0 0' }}>
+                      Ref: {latestBooking.booking_reference}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* ── Latest booking detail ── */}
-              <SectionHeader icon={<PlaneIcon />} heading="Latest Booking" theme="light" />
-              <div style={{ marginTop: 14, marginBottom: 24 }}>
+              <SectionHeader icon={<PlaneIcon />} heading={`Latest Booking · ${statusStyle(latestBooking.status).label}`} theme="light" />
+              <div style={{ marginTop: 14, marginBottom: 8 }}>
                 <ConfirmationCard
                   airline={latestBooking.outbound_airline}
                   flightNumber={latestBooking.outbound_flight_number}
@@ -359,56 +741,88 @@ export default function ConfirmPage({
                   bookingRef={latestBooking.booking_reference}
                 />
               </div>
-
-              {/* ── Passengers for latest booking ── */}
-              <SectionHeader icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-                </svg>
-              } heading="Passengers" theme="light" />
-              <div style={{ marginTop: 14, marginBottom: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {latestBooking.passengers.map((p, i) => (
-                  <div key={i} style={{ padding: '16px 20px', background: 'var(--color-bg-surface)', border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-xl)', display: 'flex', alignItems: 'center', gap: 14, boxShadow: 'var(--shadow-sm)' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-primary-subtle)', border: '1.5px solid var(--color-primary-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{i + 1}</span>
-                    </div>
-                    <div>
-                      <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', margin: 0 }}>{p.first_name} {p.last_name}</p>
-                      <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '3px 0 0' }}>
-                        DOB: {p.date_of_birth}{p.nationality ? ` · ${p.nationality}` : ''}{p.passport_number ? ` · ${p.passport_number}` : ''}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+              <div style={{ marginBottom: 24 }}>
+                <button
+                  type="button"
+                  onClick={() => latestBooking && openDetail(latestBooking.booking_reference)}
+                  style={{
+                    width: '100%', padding: '10px', marginTop: 8,
+                    background: 'none', border: '1px dashed var(--color-border-medium)',
+                    borderRadius: 'var(--radius-lg)', cursor: 'pointer',
+                    color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    transition: 'var(--transition-base)',
+                  }}
+                  className="hover:border-[var(--color-primary-border)] hover:bg-[var(--color-primary-subtle)]"
+                >
+                  <UserIcon />
+                  View Full Details & Passenger Info
+                  <ChevronIcon />
+                </button>
               </div>
 
               {/* ── Previous bookings ── */}
               {olderBookings.length > 0 && (
                 <>
                   <SectionHeader icon={<PlaneIcon />} heading={`Previous Bookings (${olderBookings.length})`} theme="light" />
-                  <div style={{ marginTop: 14, marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {olderBookings.map(b => (
-                      <div key={b.booking_reference} style={{ padding: '16px 20px', background: 'var(--color-bg-surface)', border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-sm)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ width: 28, height: 28, borderRadius: 'var(--radius-md)', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                  <div style={{ marginTop: 14, marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {olderBookings.map(b => {
+                      const ss = statusStyle(b.status);
+                      const isCancelled = b.status === 'cancelled';
+                      return (
+                        <button
+                          key={b.booking_reference}
+                          type="button"
+                          onClick={() => openDetail(b.booking_reference)}
+                          style={{
+                            width: '100%', textAlign: 'left', cursor: 'pointer',
+                            padding: '16px 20px',
+                            background: isCancelled ? 'rgba(229,62,62,0.03)' : 'var(--color-bg-surface)',
+                            border: `1.5px solid ${isCancelled ? 'rgba(229,62,62,0.2)' : 'var(--color-border)'}`,
+                            borderRadius: 'var(--radius-xl)',
+                            boxShadow: 'var(--shadow-sm)',
+                            transition: 'var(--transition-base)',
+                            opacity: isCancelled ? 0.8 : 1,
+                          }}
+                          className="group hover:border-[var(--color-primary-border)] hover:shadow-[var(--shadow-primary)]"
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{ width: 32, height: 32, borderRadius: 'var(--radius-md)', background: isCancelled ? '#ccc' : 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                              </div>
+                              <div>
+                                <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 700, margin: 0, textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                                  {b.outbound_airline} {b.outbound_flight_number}
+                                </p>
+                                <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '2px 0 0' }}>
+                                  {b.outbound_origin_city} → {b.outbound_destination_city} · {fmtShortDate(b.outbound_departure_at)}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p style={{ color: 'var(--color-text-dark)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', margin: 0 }}>{b.outbound_airline} {b.outbound_flight_number}</p>
-                              <p style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', margin: '1px 0 0' }}>{b.outbound_origin} → {b.outbound_destination} · {fmtFullDate(b.outbound_departure_at)}</p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{
+                                padding: '3px 8px', borderRadius: 'var(--radius-full)',
+                                background: ss.bg, border: `1px solid ${ss.border}`,
+                                color: ss.color, fontSize: 10, fontWeight: 700,
+                              }}>{ss.label}</span>
+                              <span style={{ color: 'var(--color-text-dark-muted)' }} className="group-hover:text-[var(--color-primary)]">
+                                <ChevronIcon />
+                              </span>
                             </div>
                           </div>
-                          <Badge variant="confirmed">Confirmed</Badge>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--color-border)' }}>
-                          <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', fontFamily: 'monospace' }}>{b.booking_reference}</span>
-                          <span style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)' }}>
-                            {b.passenger_count} pax · ${b.total_price.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--color-border)' }}>
+                            <span style={{ color: isCancelled ? 'var(--color-text-dark-muted)' : 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'monospace' }}>{b.booking_reference}</span>
+                            <span style={{ color: 'var(--color-text-dark-secondary)', fontSize: 'var(--text-xs)', textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                              {b.passenger_count} pax · ${b.total_price.toLocaleString()}
+                            </span>
+                          </div>
+                          <p style={{ color: 'var(--color-text-dark-muted)', fontSize: 10, margin: '8px 0 0', fontWeight: 600 }}>
+                            Click to view full details →
+                          </p>
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -441,6 +855,15 @@ export default function ConfirmPage({
           ) : null}
         </div>
       </PageLayout>
+
+      {/* ── Booking detail modal ── */}
+      {detailBooking && (
+        <BookingDetailModal
+          booking={detailBooking}
+          onClose={() => setDetailBooking(null)}
+          loading={loadingDetail}
+        />
+      )}
     </>
   );
 }
