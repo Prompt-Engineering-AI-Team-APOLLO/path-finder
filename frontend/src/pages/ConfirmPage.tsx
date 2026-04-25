@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   TopNav,
   PageLayout,
@@ -11,6 +12,8 @@ import {
 } from '../components/ui';
 import type { Message } from '../components/ui';
 import type { BookingRead } from './BookingPage';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 /* ── Icons ── */
 const SparkleIcon = () => (
@@ -84,13 +87,84 @@ export default function ConfirmPage({
   onClearChat,
 }: ConfirmPageProps) {
 
-  const handleSend = (text: string) => {
-    setMessages(prev => [...prev, {
-      id: String(Date.now()),
-      role: 'user',
-      content: text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    }]);
+  const [isTyping, setIsTyping] = useState(false);
+
+  const handleSend = async (text: string) => {
+    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Detect search / new flight intent → navigate home
+    const searchPattern = /\b(find|search|look|book|show|get)\s+(a\s+)?(new\s+)?(flight|flights|ticket|tickets|trip|another)|(search again|new search|go back|start over|search more)\b/i;
+    if (searchPattern.test(text)) {
+      setMessages(prev => [
+        ...prev,
+        { id: String(Date.now()), role: 'user' as const, content: text, timestamp: ts },
+        { id: String(Date.now() + 1), role: 'assistant' as const, content: "Sure! Taking you back to search for flights.", timestamp: ts },
+      ]);
+      setTimeout(() => onNavigate?.('home'), 800);
+      return;
+    }
+
+    const userMsg: Message = { id: String(Date.now()), role: 'user', content: text, timestamp: ts };
+    const assistantId = String(Date.now() + 1);
+    const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', timestamp: ts };
+
+    const nextMessages = [...messages, userMsg];
+    setMessages([...nextMessages, assistantMsg]);
+    setIsTyping(true);
+
+    try {
+      const sessionRaw = localStorage.getItem('pathfinder_auth_session') || sessionStorage.getItem('pathfinder_auth_session');
+      const token = sessionRaw ? JSON.parse(sessionRaw)?.accessToken : null;
+
+      const res = await fetch(`${API_BASE}/agent/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+
+      if (!res.ok || !res.body) throw new Error(`Request failed: ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const raw = decoder.decode(value, { stream: true });
+        for (const line of raw.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const rawChunk = line.slice(6);
+          if (rawChunk === '[DONE]') break;
+          let chunk: string;
+          try { chunk = JSON.parse(rawChunk); } catch { chunk = rawChunk; }
+          fullResponse += chunk;
+          setMessages((prev: Message[]) =>
+            prev.map((m: Message) => m.id === assistantId ? { ...m, content: m.content + chunk } : m)
+          );
+        }
+      }
+
+      // If agent response itself suggests searching, navigate home after reading it
+      const agentSuggestsSearch = /\b(search|find|look).{0,30}(flight|new trip|another)\b/i.test(fullResponse);
+      if (agentSuggestsSearch) {
+        setTimeout(() => onNavigate?.('home'), 2000);
+      }
+
+    } catch {
+      setMessages((prev: Message[]) =>
+        prev.map((m: Message) =>
+          m.id === assistantId ? { ...m, content: 'Sorry, something went wrong. Please try again.' } : m
+        )
+      );
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   /* ── Left panel ── */
@@ -102,12 +176,15 @@ export default function ConfirmPage({
       assistantName="Pathfinder AI"
       assistantSubtitle="Your Personal Concierge"
       headerIcon={<SparkleIcon />}
-      inputPlaceholder="Ask anything about your trip..."
+      inputPlaceholder='Say "find flights" to search again...'
+      isTyping={isTyping}
+      inputLoading={isTyping}
+      inputDisabled={isTyping}
       quickActionsLabel="Quick Actions"
       quickActions={[
         { icon: <PassportIcon />, label: 'Check Visa Requirements' },
         { icon: <DownloadIcon />, label: 'Download Itinerary' },
-        { icon: <StarIcon />, label: 'Search flights', onClick: () => onNavigate?.('home') },
+        { icon: <StarIcon />, label: 'Find new flights', onClick: () => onNavigate?.('home') },
       ]}
     />
   );
