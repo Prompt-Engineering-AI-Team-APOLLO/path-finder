@@ -205,7 +205,11 @@ BAGGAGE_INCLUDED: dict[str, bool] = {
 }
 
 # Departure hour slots (6 options per day)
-_DEPARTURE_HOURS = [6, 8, 10, 13, 16, 19]
+_DEPARTURE_HOURS = [
+    5, 6, 7, 8, 9, 10, 11, 12,
+    13, 14, 15, 16, 17, 18, 19, 20,
+    21, 22,
+]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -276,7 +280,7 @@ def search(
     baggage = BAGGAGE_INCLUDED[cabin_class]
 
     rng = random.Random(_seed(origin, destination, dep_date))
-    n_flights = rng.randint(4, min(6, len(_DEPARTURE_HOURS)))
+    n_flights = rng.randint(20, min(30, len(_DEPARTURE_HOURS)))
     chosen_hours = rng.sample(_DEPARTURE_HOURS, n_flights)
     chosen_hours.sort()
 
