@@ -17,6 +17,7 @@ from app.services.agent_service import AgentService
 from app.services.ai_service import AIService
 from app.services.auth_service import AuthService
 from app.services.flight_service import FlightService
+from app.services.rag_service import RAGService
 from app.services.user_service import UserService
 from app.services.vector_service import VectorService
 
@@ -52,12 +53,20 @@ def get_agent_service(db: DBDep) -> AgentService:
     return AgentService(FlightService(db))
 
 
+def get_rag_service(
+    vector_svc: Annotated[VectorService, Depends(get_vector_service)],
+    ai_svc: Annotated[AIService, Depends(get_ai_service)],
+) -> RAGService:
+    return RAGService(vector_svc, ai_svc)
+
+
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 AIServiceDep = Annotated[AIService, Depends(get_ai_service)]
 VectorServiceDep = Annotated[VectorService, Depends(get_vector_service)]
 FlightServiceDep = Annotated[FlightService, Depends(get_flight_service)]
 AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
+RAGServiceDep = Annotated[RAGService, Depends(get_rag_service)]
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 

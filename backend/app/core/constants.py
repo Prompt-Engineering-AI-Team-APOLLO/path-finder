@@ -19,13 +19,20 @@ ROLE_GUEST: str = "guest"
 ALL_ROLES: frozenset[str] = frozenset({ROLE_ADMIN, ROLE_USER, ROLE_GUEST})
 
 # ── AI ────────────────────────────────────────────────────────────────────────
+# Numeric limits only — prompt text lives in app.core.prompts so it can be
+# reviewed and versioned independently of these constants.
 AI_MAX_CONTEXT_TOKENS: int = 128_000
-AI_DEFAULT_SYSTEM_PROMPT: str = (
-    "You are Pathfinder, an intelligent AI assistant. " "Be concise, accurate, and helpful."
-)
 AI_EMBEDDING_BATCH_SIZE: int = 100
 AI_SIMILARITY_TOP_K: int = 5
 AI_SIMILARITY_THRESHOLD: float = 0.75
+
+# Backwards-compat alias — canonical definition is in app.core.prompts.
+AI_DEFAULT_SYSTEM_PROMPT: str = (
+    "You are Pathfinder, an intelligent AI travel assistant. "
+    "Be concise, accurate, and helpful. "
+    "When the user asks about flights or bookings, direct them to use the "
+    "flight search and booking features in the app."
+)
 
 # ── Rate Limiting ─────────────────────────────────────────────────────────────
 RATE_LIMIT_REQUESTS: int = 100
