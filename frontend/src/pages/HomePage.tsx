@@ -322,6 +322,7 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
   const extractFlightParams = async (
     history: { role: string; content: string }[],
   ) => {
+    const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     const defaultDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
       .toISOString()
       .split('T')[0];
@@ -364,6 +365,7 @@ OUTPUT when should_search false:
 IATA codes: New York=JFK, Newark=EWR, Atlanta=ATL, Los Angeles=LAX, Chicago=ORD, Miami=MIA, San Francisco=SFO, Boston=BOS, Dallas=DFW, Seattle=SEA, Denver=DEN, Washington DC=DCA, Orlando=MCO, Houston=IAH, Las Vegas=LAS, Philadelphia=PHL, Charlotte=CLT, Phoenix=PHX, Minneapolis=MSP, Detroit=DTW, Portland=PDX
 
 Rules:
+- Today's date is ${todayDate}. Use this to resolve relative dates: "tomorrow", "next Friday", "this weekend", etc.
 - Missing date → use ${defaultDate}
 - Passengers default 1, cabin default economy
 - Return ONLY valid JSON`;
