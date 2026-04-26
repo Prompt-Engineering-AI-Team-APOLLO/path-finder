@@ -133,6 +133,12 @@ export default function PlanPage({
 
   // Track which flight we've already auto-triggered for (avoid re-firing on re-render)
   const triggeredFlightRef = useRef<string | null>(null);
+  // Holds the offer alias until the user provides passenger details — injected
+  // invisibly into the API payload so the agent cannot book before they do.
+  const pendingOfferRef = useRef<string | null>(null);
+  // Index into messages[] where the current booking session started — so we
+  // only send session messages to the agent (not old bookings / old chat).
+  const sessionStartRef = useRef<number>(0);
 
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -152,6 +158,7 @@ export default function PlanPage({
         { id: String(Date.now()), role: 'user' as const, content: text, timestamp: ts },
         { id: String(Date.now() + 1), role: 'assistant' as const, content: "No problem! Taking you back to search for flights.", timestamp: ts },
       ]);
+      pendingOfferRef.current = null;
       setTimeout(() => onNavigate?.('home', text), 900);
       return;
     }
@@ -160,9 +167,23 @@ export default function PlanPage({
     const assistantId = String(Date.now() + 1);
     const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', timestamp: ts };
 
-    const nextMessages = [...messages, userMsg];
-    setMessages([...nextMessages, assistantMsg]);
+    // UI: append to full history so chat panel shows everything
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
     setIsTyping(true);
+
+    // API: only send messages from the current booking session so the agent
+    // never sees passenger details or offer_ids from previous bookings.
+    const sessionMsgs = messages.slice(sessionStartRef.current);
+    // Invisibly append the pending offer_id to this turn's user message.
+    // The agent needs it to call book_flight but must not see it before the
+    // user has provided their passenger details (i.e. in the trigger turn).
+    const apiUserContent = pendingOfferRef.current
+      ? `${text}\n\n[offer_id for this booking: ${pendingOfferRef.current}]`
+      : text;
+    const apiMessages = [
+      ...sessionMsgs.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: apiUserContent },
+    ];
 
     let fullResponse = '';
 
@@ -174,9 +195,7 @@ export default function PlanPage({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
-        }),
+        body: JSON.stringify({ messages: apiMessages }),
       });
 
       if (!res.ok || !res.body) {
@@ -209,6 +228,7 @@ export default function PlanPage({
       const bookingRefMatch = fullResponse.match(/\bPF-[A-Z0-9]{4,10}\b/);
       if (bookingRefMatch && setConfirmedBooking) {
         const ref = bookingRefMatch[0];
+        pendingOfferRef.current = null; // offer consumed — clear so it isn't reused
         try {
           const fetchToken = getToken();
           const bookingRes = await fetch(`${API_BASE}/flights/bookings/${ref}`, {
@@ -257,34 +277,42 @@ export default function PlanPage({
       : 1;
     const offerAlias = `O${selectedIndex}:${selectedFlight.origin}:${selectedFlight.destination}:${depDate}:${selectedFlight.cabin_class}:${passengerCount}`;
 
-    // Brief display message shown in chat — user-friendly, no internal instructions
+    // Store the offer alias in a ref — NOT sent to the agent yet.
+    // It will be invisibly appended to the user's passenger-details reply so the
+    // agent has everything it needs exactly when it calls book_flight, but cannot
+    // act before the user has provided their details.
+    pendingOfferRef.current = offerAlias;
+
+    // Brief display message shown in chat — user-friendly only
     const displayText = `I'd like to book ${selectedFlight.airline} ${selectedFlight.flight_number} — ${selectedFlight.origin} → ${selectedFlight.destination} on ${depDate}.`;
 
-    // Full instruction sent to agent — never shown in the chat UI
+    // Agent instruction: flight info only, NO offer_id (so agent cannot book yet)
     const agentText =
-      `I want to book this flight:\n` +
+      `I've selected this flight and need help booking it:\n` +
       `- ${selectedFlight.airline} ${selectedFlight.flight_number}\n` +
       `- ${selectedFlight.origin_city} (${selectedFlight.origin}) → ${selectedFlight.destination_city} (${selectedFlight.destination})\n` +
       `- Departure: ${formatTime(selectedFlight.departure_at)} · Arrival: ${formatTime(selectedFlight.arrival_at)}\n` +
-      `- Date: ${depDate} · ${cabinLabel} · ${passengerCount} passenger(s)\n` +
-      `- $${selectedFlight.price_per_person}/person · offer_id: ${offerAlias}\n\n` +
-      `Ask me for fresh passenger details now: first_name and last_name as SEPARATE fields, ` +
-      `date_of_birth (YYYY-MM-DD), and contact email. ` +
-      `Do not book until I provide them. Do not search for flights — the offer_id is already resolved.`;
+      `- Date: ${depDate} · ${cabinLabel} · ${passengerCount} passenger(s) · $${selectedFlight.price_per_person}/person\n\n` +
+      `Please ask me for my passenger details: first_name and last_name as SEPARATE fields, ` +
+      `date_of_birth (YYYY-MM-DD format), and contact email. Do not attempt to book yet.`;
 
     const ts = now();
     const assistantId = String(Date.now() + 1);
 
-    // Add the visible user message + empty assistant placeholder to chat
-    setMessages(prev => [
-      ...prev,
-      { id: String(Date.now()), role: 'user' as const, content: displayText, timestamp: ts },
-      { id: assistantId, role: 'assistant' as const, content: '', timestamp: ts },
-    ]);
+    // Record where this booking session starts before adding new messages.
+    // handleSend will slice messages from this index so old booking data is
+    // never sent to the agent.
+    setMessages(prev => {
+      sessionStartRef.current = prev.length;
+      return [
+        ...prev,
+        { id: String(Date.now()), role: 'user' as const, content: displayText, timestamp: ts },
+        { id: assistantId, role: 'assistant' as const, content: '', timestamp: ts },
+      ];
+    });
     setIsTyping(true);
 
-    // Send a FRESH single-message conversation to the agent so it cannot see
-    // passenger details from any previous booking in the shared chat history.
+    // Fresh single-message call — agent has no prior history at all for this turn
     const token = getToken();
     fetch(`${API_BASE}/agent/chat`, {
       method: 'POST',
