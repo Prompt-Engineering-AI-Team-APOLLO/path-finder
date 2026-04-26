@@ -266,7 +266,9 @@ export default function PlanPage({
       `- Departure: ${formatTime(selectedFlight.departure_at)} · Arrival: ${formatTime(selectedFlight.arrival_at)}\n` +
       `- Date: ${depDate} · ${cabinLabel} · ${passengerCount} passenger(s)\n` +
       `- $${selectedFlight.price_per_person}/person · offer_id: ${offerAlias}\n\n` +
-      `Please collect my passenger details (full name, date of birth, and contact email) and then book this flight using the offer_id above. Do not search for flights again — the offer_id is already known.`;
+      `IMPORTANT: Do NOT use any passenger names or details from earlier in this conversation — they may belong to a different booking. ` +
+      `Please ask me now for fresh passenger details. You need each field separately: first_name, last_name (do NOT accept "John Doe" as a single name), date_of_birth (YYYY-MM-DD), and contact email. ` +
+      `Do not call book_flight until I have provided these details in this reply thread. Do not search for flights again — the offer_id above is already resolved.`;
 
     handleSend(triggerText, { skipNavCheck: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps

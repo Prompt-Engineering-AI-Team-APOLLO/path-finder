@@ -477,6 +477,28 @@ Rules:
           setSelectedFlightId(null);
           setFlightRoute({ from: params.origin, to: params.destination });
           setPassengerCount(params.passengers ?? 1);
+
+          // Replace the AI's just-sent message with ground-truth flight data so
+          // times/numbers in chat always match the cards (AI generates before search).
+          const origin = allFlights[0]?.origin_city ?? params.origin;
+          const dest = allFlights[0]?.destination_city ?? params.destination;
+          const flightLines = allFlights.slice(0, 4).map((f, i) =>
+            `${i + 1}. **${f.airline} ${f.flight_number}** — ${formatTime(f.departure_at)} → ${formatTime(f.arrival_at)} · ${formatDuration(f.duration_minutes)} · ${f.stops === 0 ? 'Nonstop' : `${f.stops} stop(s)`} · $${f.price_per_person}/person`
+          ).join('\n');
+          setMessages(prev => {
+            const lastIdx = prev.length - 1;
+            if (lastIdx >= 0 && prev[lastIdx].role === 'assistant') {
+              return [
+                ...prev.slice(0, lastIdx),
+                {
+                  ...prev[lastIdx],
+                  content: `Here are the available flights from ${origin} to ${dest}:\n\n${flightLines}\n\nSelect a flight from the list on the Plan page to continue with booking.`,
+                },
+              ];
+            }
+            return prev;
+          });
+
           // Auto-navigate to Plan page so results are immediately visible there
           onNavigate?.('plan');
         }
