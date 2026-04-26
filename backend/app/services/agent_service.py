@@ -21,6 +21,7 @@ from collections.abc import AsyncGenerator
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.core.constants import estimate_cost_usd
 from app.core.logging import get_logger
 from app.core.prompts import AGENT_TOOLS, build_agent_system_prompt
 from app.schemas.agent import AgentMessage
@@ -254,6 +255,7 @@ class AgentService:
         # ── Per-run accumulators ──────────────────────────────────────────────
         _total_prompt_tokens = 0
         _total_completion_tokens = 0
+        _total_estimated_cost_usd = 0.0
         _tools_called: list[str] = []
         _run_start = time.perf_counter()
 
@@ -265,6 +267,7 @@ class AgentService:
                 total_prompt_tokens=_total_prompt_tokens,
                 total_completion_tokens=_total_completion_tokens,
                 total_tokens=_total_prompt_tokens + _total_completion_tokens,
+                total_estimated_cost_usd=round(_total_estimated_cost_usd, 8),
                 tools_called=_tools_called,
                 elapsed_seconds=round(time.perf_counter() - _run_start, 2),
             )
@@ -314,20 +317,25 @@ class AgentService:
                         return
 
                     _usage = response.usage
+                    _iter_prompt = _usage.prompt_tokens if _usage else 0
+                    _iter_completion = _usage.completion_tokens if _usage else 0
+                    _iter_cost = estimate_cost_usd(response.model, _iter_prompt, _iter_completion)
                     logger.info(
                         "llm_call",
                         model=response.model,
                         iteration=iteration,
                         tool_choice=tool_choice,
-                        prompt_tokens=_usage.prompt_tokens if _usage else None,
-                        completion_tokens=_usage.completion_tokens if _usage else None,
+                        prompt_tokens=_iter_prompt,
+                        completion_tokens=_iter_completion,
                         total_tokens=_usage.total_tokens if _usage else None,
+                        estimated_cost_usd=_iter_cost,
                         finish_reason=response.choices[0].finish_reason,
                         duration_ms=_llm_ms,
                     )
                     if _usage:
                         _total_prompt_tokens += _usage.prompt_tokens
                         _total_completion_tokens += _usage.completion_tokens
+                        _total_estimated_cost_usd += _iter_cost
 
                     # ── Token budget check ────────────────────────────────────
                     _run_tokens = _total_prompt_tokens + _total_completion_tokens
@@ -390,6 +398,7 @@ class AgentService:
                             total_prompt_tokens=_total_prompt_tokens,
                             total_completion_tokens=_total_completion_tokens,
                             total_tokens=_total_prompt_tokens + _total_completion_tokens,
+                            total_estimated_cost_usd=round(_total_estimated_cost_usd, 8),
                             tools_called=_tools_called,
                             elapsed_seconds=round(time.perf_counter() - _run_start, 2),
                         )

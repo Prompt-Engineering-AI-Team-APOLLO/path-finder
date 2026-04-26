@@ -357,6 +357,7 @@ async def test_modify_departure_date_and_cabin_class_together(svc: FlightService
         contact_email="jane@example.com",
     )
     booking = await svc.book_flight(req, user_id=uid)
+    original_price = booking.total_price
     new_date = _FUTURE + timedelta(days=10)
 
     modified = await svc.modify_booking(
@@ -367,7 +368,7 @@ async def test_modify_departure_date_and_cabin_class_together(svc: FlightService
 
     assert modified.cabin_class == "business"
     assert modified.outbound_departure_at.date() == new_date
-    assert modified.total_price > booking.total_price  # business > economy
+    assert modified.total_price > original_price  # business > economy
 
 
 @pytest.mark.asyncio

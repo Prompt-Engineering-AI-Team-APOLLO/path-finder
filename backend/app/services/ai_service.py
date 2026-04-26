@@ -44,6 +44,7 @@ from openai import AsyncOpenAI, APIConnectionError, APIStatusError, RateLimitErr
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
+from app.core.constants import estimate_cost_usd
 from app.core.prompts import CHAT_SYSTEM_PROMPT
 from app.core.logging import get_logger
 from app.schemas.ai import ChatMessage, EmbeddingResponse
@@ -157,8 +158,19 @@ class AIService:
                     max_tokens=max_tokens or settings.OPENAI_MAX_TOKENS,
                 )
                 content = response.choices[0].message.content or ""
-                tokens = response.usage.total_tokens if response.usage else 0
-                logger.info("ai_chat_completed", model=response.model, tokens=tokens)
+                usage = response.usage
+                prompt_tokens = usage.prompt_tokens if usage else 0
+                completion_tokens = usage.completion_tokens if usage else 0
+                tokens = usage.total_tokens if usage else 0
+                cost_usd = estimate_cost_usd(response.model, prompt_tokens, completion_tokens)
+                logger.info(
+                    "ai_chat_completed",
+                    model=response.model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=tokens,
+                    estimated_cost_usd=cost_usd,
+                )
                 return content, tokens
 
             except Exception as exc:
@@ -219,12 +231,19 @@ class AIService:
                     response_format={"type": "json_object"},
                 )
                 raw = response.choices[0].message.content or "{}"
-                tokens = response.usage.total_tokens if response.usage else 0
+                usage = response.usage
+                prompt_tokens = usage.prompt_tokens if usage else 0
+                completion_tokens = usage.completion_tokens if usage else 0
+                tokens = usage.total_tokens if usage else 0
+                cost_usd = estimate_cost_usd(response.model, prompt_tokens, completion_tokens)
 
                 logger.info(
                     "ai_chat_structured_completed",
                     model=response.model,
-                    tokens=tokens,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=tokens,
+                    estimated_cost_usd=cost_usd,
                     schema=response_schema.__name__,
                 )
 
@@ -353,7 +372,13 @@ class AIService:
                 )
                 embeddings = [item.embedding for item in response.data]
                 tokens = response.usage.total_tokens if response.usage else 0
-                logger.info("ai_embed_completed", count=len(texts), tokens=tokens)
+                cost_usd = estimate_cost_usd(settings.OPENAI_EMBEDDING_MODEL, tokens)
+                logger.info(
+                    "ai_embed_completed",
+                    count=len(texts),
+                    total_tokens=tokens,
+                    estimated_cost_usd=cost_usd,
+                )
                 return EmbeddingResponse(
                     embeddings=embeddings,
                     model=settings.OPENAI_EMBEDDING_MODEL,
