@@ -488,7 +488,10 @@ Rules:
       }
 
       // ── Chat ↔ UI intent handling ──────────────────────────────────────────
-      if (params && flightResults && flightResults.length > 0) {
+      // Skip intent handling when we just did a fresh search — flightResults in the
+      // closure is the pre-search value (stale), so any match would be incorrect.
+      // Also skip if we navigated to Plan (the flight list there handles selection).
+      if (!params?.should_search && params && flightResults && flightResults.length > 0) {
         const intent = params.ui_intent as string | undefined;
         const highlightNum = (params.highlighted_flight_number as string | null) ?? null;
         const highlightAirline = (params.highlighted_airline as string | null) ?? null;
