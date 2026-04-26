@@ -477,6 +477,8 @@ Rules:
           setSelectedFlightId(null);
           setFlightRoute({ from: params.origin, to: params.destination });
           setPassengerCount(params.passengers ?? 1);
+          // Auto-navigate to Plan page so results are immediately visible there
+          onNavigate?.('plan');
         }
       } else if (params && hasFilterParams(params) && rawFlightResults) {
         // Filter existing results (always against the raw set so filters don't compound destructively)

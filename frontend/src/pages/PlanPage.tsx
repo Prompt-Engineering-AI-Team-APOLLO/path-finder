@@ -104,6 +104,10 @@ interface PlanPageProps {
   onClearChat?: () => void;
   // Flight selected from HomePage chat
   selectedFlight?: FlightOffer | null;
+  setSelectedFlight?: (flight: FlightOffer) => void;
+  selectedFlightId?: string | null;
+  setSelectedFlightId?: (id: string | null) => void;
+  flightResults?: FlightOffer[] | null;
   passengerCount?: number;
   setConfirmedBooking?: (booking: BookingRead) => void;
 }
@@ -117,6 +121,10 @@ export default function PlanPage({
   setMessages,
   onClearChat,
   selectedFlight,
+  setSelectedFlight,
+  selectedFlightId,
+  setSelectedFlightId,
+  flightResults,
   passengerCount = 1,
   setConfirmedBooking,
 }: PlanPageProps) {
@@ -403,17 +411,51 @@ export default function PlanPage({
             </div>
           </div>
 
-          {/* Outbound flight */}
+          {/* Flight options */}
           <div style={{ marginBottom: 24 }}>
             <SectionHeader
               icon={<PlaneIcon />}
-              heading="Your Selected Flight"
-              subheading={selectedFlight ? routeLabel : 'No flight selected yet'}
+              heading={flightResults && flightResults.length > 0 ? 'Available Flights' : 'Your Selected Flight'}
+              subheading={
+                flightResults && flightResults.length > 0
+                  ? `${flightResults.length} option${flightResults.length > 1 ? 's' : ''} found — select one to book`
+                  : selectedFlight ? routeLabel : 'No flight selected yet'
+              }
               theme="light"
               className="mb-4"
             />
-            <div style={{ marginTop: 14 }}>
-              {selectedFlight ? (
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {flightResults && flightResults.length > 0 ? (
+                flightResults.map((f, i) => {
+                  const isSelected = f.offer_id === (selectedFlightId ?? selectedFlight?.offer_id);
+                  return (
+                    <div
+                      key={f.offer_id}
+                      onClick={() => {
+                        setSelectedFlight?.(f);
+                        setSelectedFlightId?.(f.offer_id);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <FlightCard
+                        airline={f.airline}
+                        flightNumber={f.flight_number}
+                        cabinClass={f.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        departureTime={formatTime(f.departure_at)}
+                        departureCode={f.origin}
+                        arrivalTime={formatTime(f.arrival_at)}
+                        arrivalCode={f.destination}
+                        duration={formatDuration(f.duration_minutes)}
+                        stops={f.stops}
+                        price={f.price_per_person}
+                        currency={f.currency}
+                        recommended={i === 0}
+                        selected={isSelected}
+                      />
+                    </div>
+                  );
+                })
+              ) : selectedFlight ? (
                 <FlightCard
                   airline={selectedFlight.airline}
                   flightNumber={selectedFlight.flight_number}
