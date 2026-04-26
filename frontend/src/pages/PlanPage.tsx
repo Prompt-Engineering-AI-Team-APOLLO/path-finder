@@ -251,26 +251,74 @@ export default function PlanPage({
     const depDate = selectedFlight.departure_at.split('T')[0]; // YYYY-MM-DD
     const cabinLabel = selectedFlight.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-    // Construct the agent alias offer_id so the agent books the EXACT same flight
-    // shown in the card (format matches agent_tools.py make_alias).
-    // Index is 1-based position in flightResults; falls back to 1 if list unavailable.
+    // Construct the agent alias offer_id (format matches agent_tools.py make_alias)
     const selectedIndex = flightResults
       ? (flightResults.findIndex(f => f.offer_id === selectedFlight.offer_id) + 1) || 1
       : 1;
     const offerAlias = `O${selectedIndex}:${selectedFlight.origin}:${selectedFlight.destination}:${depDate}:${selectedFlight.cabin_class}:${passengerCount}`;
 
-    const triggerText =
+    // Brief display message shown in chat — user-friendly, no internal instructions
+    const displayText = `I'd like to book ${selectedFlight.airline} ${selectedFlight.flight_number} — ${selectedFlight.origin} → ${selectedFlight.destination} on ${depDate}.`;
+
+    // Full instruction sent to agent — never shown in the chat UI
+    const agentText =
       `I want to book this flight:\n` +
       `- ${selectedFlight.airline} ${selectedFlight.flight_number}\n` +
       `- ${selectedFlight.origin_city} (${selectedFlight.origin}) → ${selectedFlight.destination_city} (${selectedFlight.destination})\n` +
       `- Departure: ${formatTime(selectedFlight.departure_at)} · Arrival: ${formatTime(selectedFlight.arrival_at)}\n` +
       `- Date: ${depDate} · ${cabinLabel} · ${passengerCount} passenger(s)\n` +
       `- $${selectedFlight.price_per_person}/person · offer_id: ${offerAlias}\n\n` +
-      `IMPORTANT: Do NOT use any passenger names or details from earlier in this conversation — they may belong to a different booking. ` +
-      `Please ask me now for fresh passenger details. You need each field separately: first_name, last_name (do NOT accept "John Doe" as a single name), date_of_birth (YYYY-MM-DD), and contact email. ` +
-      `Do not call book_flight until I have provided these details in this reply thread. Do not search for flights again — the offer_id above is already resolved.`;
+      `Ask me for fresh passenger details now: first_name and last_name as SEPARATE fields, ` +
+      `date_of_birth (YYYY-MM-DD), and contact email. ` +
+      `Do not book until I provide them. Do not search for flights — the offer_id is already resolved.`;
 
-    handleSend(triggerText, { skipNavCheck: true });
+    const ts = now();
+    const assistantId = String(Date.now() + 1);
+
+    // Add the visible user message + empty assistant placeholder to chat
+    setMessages(prev => [
+      ...prev,
+      { id: String(Date.now()), role: 'user' as const, content: displayText, timestamp: ts },
+      { id: assistantId, role: 'assistant' as const, content: '', timestamp: ts },
+    ]);
+    setIsTyping(true);
+
+    // Send a FRESH single-message conversation to the agent so it cannot see
+    // passenger details from any previous booking in the shared chat history.
+    const token = getToken();
+    fetch(`${API_BASE}/agent/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ messages: [{ role: 'user', content: agentText }] }),
+    })
+      .then(async res => {
+        if (!res.ok || !res.body) throw new Error(`Request failed: ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const raw = decoder.decode(value, { stream: true });
+          for (const line of raw.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const rawChunk = line.slice(6);
+            if (rawChunk === '[DONE]') break;
+            let chunk: string;
+            try { chunk = JSON.parse(rawChunk); } catch { chunk = rawChunk; }
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + chunk } : m));
+          }
+        }
+      })
+      .catch(() => {
+        setMessages(prev => prev.map(m =>
+          m.id === assistantId ? { ...m, content: 'Sorry, something went wrong. Please try again.' } : m
+        ));
+      })
+      .finally(() => setIsTyping(false));
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFlight?.offer_id]);
 
