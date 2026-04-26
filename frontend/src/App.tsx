@@ -290,6 +290,7 @@ export default function App() {
           selectedFlightId={selectedFlightId}
           setSelectedFlightId={setSelectedFlightId}
           flightResults={flightResults}
+          rawFlightResults={rawFlightResults}
           passengerCount={passengerCount}
           setConfirmedBooking={setConfirmedBooking}
           {...sharedChat}

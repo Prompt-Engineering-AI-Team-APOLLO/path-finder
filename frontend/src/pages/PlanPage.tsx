@@ -108,6 +108,8 @@ interface PlanPageProps {
   selectedFlightId?: string | null;
   setSelectedFlightId?: (id: string | null) => void;
   flightResults?: FlightOffer[] | null;
+  // Unfiltered full result set — used for alias index so filtering never shifts it
+  rawFlightResults?: FlightOffer[] | null;
   passengerCount?: number;
   setConfirmedBooking?: (booking: BookingRead) => void;
 }
@@ -125,6 +127,7 @@ export default function PlanPage({
   selectedFlightId,
   setSelectedFlightId,
   flightResults,
+  rawFlightResults,
   passengerCount = 1,
   setConfirmedBooking,
 }: PlanPageProps) {
@@ -271,9 +274,12 @@ export default function PlanPage({
     const depDate = selectedFlight.departure_at.split('T')[0]; // YYYY-MM-DD
     const cabinLabel = selectedFlight.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-    // Construct the agent alias offer_id (format matches agent_tools.py make_alias)
-    const selectedIndex = flightResults
-      ? (flightResults.findIndex(f => f.offer_id === selectedFlight.offer_id) + 1) || 1
+    // Construct the agent alias offer_id (format matches agent_tools.py make_alias).
+    // Use rawFlightResults (unfiltered, capped to 4) so filtering never shifts the
+    // index — alias indices must match the agent's own [:4]-sliced result order.
+    const indexSource = rawFlightResults ?? flightResults;
+    const selectedIndex = indexSource
+      ? (indexSource.findIndex(f => f.offer_id === selectedFlight.offer_id) + 1) || 1
       : 1;
     const offerAlias = `O${selectedIndex}:${selectedFlight.origin}:${selectedFlight.destination}:${depDate}:${selectedFlight.cabin_class}:${passengerCount}`;
 

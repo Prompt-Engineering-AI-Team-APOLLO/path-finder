@@ -467,7 +467,10 @@ Rules:
           }),
         });
         const flightData = await flightRes.json().catch(() => null);
-        const allFlights: FlightOffer[] = flightData?.outbound_flights ?? [];
+        // Cap to 4 — agent's handle_search_flights slices results[:4], so aliases
+        // O1–O4 are the only valid indices. Showing more flights here would make
+        // any selected flight beyond position 4 resolve to the wrong offer.
+        const allFlights: FlightOffer[] = (flightData?.outbound_flights ?? []).slice(0, 4);
 
         if (flightRes.ok && allFlights.length > 0) {
           const displayed = hasFilterParams(params) ? applyFilters(allFlights, params) : allFlights;
