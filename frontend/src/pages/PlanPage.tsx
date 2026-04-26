@@ -247,11 +247,27 @@ export default function PlanPage({
     if (triggeredFlightRef.current === selectedFlight.offer_id) return;
     triggeredFlightRef.current = selectedFlight.offer_id;
 
-    const dateStr = new Date(selectedFlight.departure_at).toLocaleDateString([], {
-      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-    });
+    // Use ISO date directly to avoid timezone shifting from locale formatting
+    const depDate = selectedFlight.departure_at.split('T')[0]; // YYYY-MM-DD
     const cabinLabel = selectedFlight.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const triggerText = `I'd like to book the ${selectedFlight.airline} flight ${selectedFlight.flight_number} from ${selectedFlight.origin_city} (${selectedFlight.origin}) to ${selectedFlight.destination_city} (${selectedFlight.destination}) on ${dateStr} for ${passengerCount} passenger(s) in ${cabinLabel} class at $${selectedFlight.price_per_person}/person. Please search for this flight and help me complete the booking by collecting my passenger details.`;
+
+    // Construct the agent alias offer_id so the agent books the EXACT same flight
+    // shown in the card (format matches agent_tools.py make_alias).
+    // Index is 1-based position in flightResults; falls back to 1 if list unavailable.
+    const selectedIndex = flightResults
+      ? (flightResults.findIndex(f => f.offer_id === selectedFlight.offer_id) + 1) || 1
+      : 1;
+    const offerAlias = `O${selectedIndex}:${selectedFlight.origin}:${selectedFlight.destination}:${depDate}:${selectedFlight.cabin_class}:${passengerCount}`;
+
+    const triggerText =
+      `I want to book this flight:\n` +
+      `- ${selectedFlight.airline} ${selectedFlight.flight_number}\n` +
+      `- ${selectedFlight.origin_city} (${selectedFlight.origin}) → ${selectedFlight.destination_city} (${selectedFlight.destination})\n` +
+      `- Departure: ${formatTime(selectedFlight.departure_at)} · Arrival: ${formatTime(selectedFlight.arrival_at)}\n` +
+      `- Date: ${depDate} · ${cabinLabel} · ${passengerCount} passenger(s)\n` +
+      `- $${selectedFlight.price_per_person}/person · offer_id: ${offerAlias}\n\n` +
+      `Please collect my passenger details (full name, date of birth, and contact email) and then book this flight using the offer_id above. Do not search for flights again — the offer_id is already known.`;
+
     handleSend(triggerText, { skipNavCheck: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFlight?.offer_id]);
