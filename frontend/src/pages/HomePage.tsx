@@ -322,6 +322,7 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
   const extractFlightParams = async (
     history: { role: string; content: string }[],
   ) => {
+    const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     const defaultDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
       .toISOString()
       .split('T')[0];
@@ -364,6 +365,7 @@ OUTPUT when should_search false:
 IATA codes: New York=JFK, Newark=EWR, Atlanta=ATL, Los Angeles=LAX, Chicago=ORD, Miami=MIA, San Francisco=SFO, Boston=BOS, Dallas=DFW, Seattle=SEA, Denver=DEN, Washington DC=DCA, Orlando=MCO, Houston=IAH, Las Vegas=LAS, Philadelphia=PHL, Charlotte=CLT, Phoenix=PHX, Minneapolis=MSP, Detroit=DTW, Portland=PDX
 
 Rules:
+- Today's date is ${todayDate}. Use this to resolve relative dates: "tomorrow", "next Friday", "this weekend", etc.
 - Missing date → use ${defaultDate}
 - Passengers default 1, cabin default economy
 - Return ONLY valid JSON`;
@@ -467,7 +469,10 @@ Rules:
           }),
         });
         const flightData = await flightRes.json().catch(() => null);
-        const allFlights: FlightOffer[] = flightData?.outbound_flights ?? [];
+        // Cap to 4 — agent's handle_search_flights slices results[:4], so aliases
+        // O1–O4 are the only valid indices. Showing more flights here would make
+        // any selected flight beyond position 4 resolve to the wrong offer.
+        const allFlights: FlightOffer[] = (flightData?.outbound_flights ?? []).slice(0, 4);
 
         if (flightRes.ok && allFlights.length > 0) {
           const displayed = hasFilterParams(params) ? applyFilters(allFlights, params) : allFlights;
@@ -477,6 +482,30 @@ Rules:
           setSelectedFlightId(null);
           setFlightRoute({ from: params.origin, to: params.destination });
           setPassengerCount(params.passengers ?? 1);
+
+          // Replace the AI's just-sent message with ground-truth flight data so
+          // times/numbers in chat always match the cards (AI generates before search).
+          const origin = allFlights[0]?.origin_city ?? params.origin;
+          const dest = allFlights[0]?.destination_city ?? params.destination;
+          const flightLines = allFlights.slice(0, 4).map((f, i) =>
+            `${i + 1}. **${f.airline} ${f.flight_number}** — ${formatTime(f.departure_at)} → ${formatTime(f.arrival_at)} · ${formatDuration(f.duration_minutes)} · ${f.stops === 0 ? 'Nonstop' : `${f.stops} stop(s)`} · $${f.price_per_person}/person`
+          ).join('\n');
+          setMessages(prev => {
+            const lastIdx = prev.length - 1;
+            if (lastIdx >= 0 && prev[lastIdx].role === 'assistant') {
+              return [
+                ...prev.slice(0, lastIdx),
+                {
+                  ...prev[lastIdx],
+                  content: `Here are the available flights from ${origin} to ${dest}:\n\n${flightLines}\n\nSelect a flight from the list on the Plan page to continue with booking.`,
+                },
+              ];
+            }
+            return prev;
+          });
+
+          // Auto-navigate to Plan page so results are immediately visible there
+          onNavigate?.('plan');
         }
       } else if (params && hasFilterParams(params) && rawFlightResults) {
         // Filter existing results (always against the raw set so filters don't compound destructively)
@@ -486,7 +515,10 @@ Rules:
       }
 
       // ── Chat ↔ UI intent handling ──────────────────────────────────────────
-      if (params && flightResults && flightResults.length > 0) {
+      // Skip intent handling when we just did a fresh search — flightResults in the
+      // closure is the pre-search value (stale), so any match would be incorrect.
+      // Also skip if we navigated to Plan (the flight list there handles selection).
+      if (!params?.should_search && params && flightResults && flightResults.length > 0) {
         const intent = params.ui_intent as string | undefined;
         const highlightNum = (params.highlighted_flight_number as string | null) ?? null;
         const highlightAirline = (params.highlighted_airline as string | null) ?? null;

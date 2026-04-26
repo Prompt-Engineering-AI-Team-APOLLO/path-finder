@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -30,6 +31,63 @@ class ChatResponse(BaseModel):
     message_id: uuid.UUID
     model: str
     tokens_used: int
+
+
+# ── Structured output schemas ─────────────────────────────────────────────────
+# These Pydantic models define the JSON shape we ask the LLM to emit when
+# response_format={"type": "json_object"} is set on the AIService.chat() call.
+# Using explicit schemas (rather than free-form JSON) lets us:
+#   1. Validate the model's output with model_validate_json() immediately.
+#   2. Catch hallucinated or missing fields before they reach the frontend.
+#   3. Document the contract between prompt and caller in one place.
+
+
+class FlightOfferSummary(BaseModel):
+    """Structured summary of a single flight offer, as returned by the LLM.
+
+    Used when asking the model to distil search results into a ranked list
+    rather than prose — gives the frontend a predictable shape to render.
+    """
+
+    offer_id: str = Field(description="Opaque offer identifier from the search result")
+    airline: str
+    flight_number: str
+    departure_at: str = Field(description="ISO 8601 departure datetime")
+    arrival_at: str = Field(description="ISO 8601 arrival datetime")
+    stops: int = Field(ge=0)
+    cabin_class: Literal["economy", "premium_economy", "business", "first"]
+    total_price: float = Field(gt=0)
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    recommended: bool = Field(
+        default=False,
+        description="True for the single best value-for-money option the model identified",
+    )
+    recommendation_reason: str | None = Field(
+        default=None,
+        description="One-sentence rationale when recommended=True",
+    )
+
+
+class FlightSearchSummaryResponse(BaseModel):
+    """Structured response for the /ai/flight-summary endpoint.
+
+    The LLM is instructed to populate this schema directly so callers receive
+    typed, validated data instead of markdown prose.
+    """
+
+    origin: str
+    destination: str
+    departure_date: str
+    passengers: int = Field(ge=1)
+    outbound_offers: list[FlightOfferSummary] = Field(
+        max_length=4, description="Top outbound offers, best-value first"
+    )
+    return_offers: list[FlightOfferSummary] | None = Field(
+        default=None, description="Top return offers for round-trips; null for one-way"
+    )
+    summary: str = Field(
+        description="2–3 sentence natural-language summary of the best options"
+    )
 
 
 class EmbeddingRequest(BaseModel):

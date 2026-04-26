@@ -104,6 +104,12 @@ interface PlanPageProps {
   onClearChat?: () => void;
   // Flight selected from HomePage chat
   selectedFlight?: FlightOffer | null;
+  setSelectedFlight?: (flight: FlightOffer) => void;
+  selectedFlightId?: string | null;
+  setSelectedFlightId?: (id: string | null) => void;
+  flightResults?: FlightOffer[] | null;
+  // Unfiltered full result set — used for alias index so filtering never shifts it
+  rawFlightResults?: FlightOffer[] | null;
   passengerCount?: number;
   setConfirmedBooking?: (booking: BookingRead) => void;
 }
@@ -117,6 +123,11 @@ export default function PlanPage({
   setMessages,
   onClearChat,
   selectedFlight,
+  setSelectedFlight,
+  selectedFlightId,
+  setSelectedFlightId,
+  flightResults,
+  rawFlightResults,
   passengerCount = 1,
   setConfirmedBooking,
 }: PlanPageProps) {
@@ -125,6 +136,12 @@ export default function PlanPage({
 
   // Track which flight we've already auto-triggered for (avoid re-firing on re-render)
   const triggeredFlightRef = useRef<string | null>(null);
+  // Holds the offer alias until the user provides passenger details — injected
+  // invisibly into the API payload so the agent cannot book before they do.
+  const pendingOfferRef = useRef<string | null>(null);
+  // Index into messages[] where the current booking session started — so we
+  // only send session messages to the agent (not old bookings / old chat).
+  const sessionStartRef = useRef<number>(0);
 
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -144,6 +161,7 @@ export default function PlanPage({
         { id: String(Date.now()), role: 'user' as const, content: text, timestamp: ts },
         { id: String(Date.now() + 1), role: 'assistant' as const, content: "No problem! Taking you back to search for flights.", timestamp: ts },
       ]);
+      pendingOfferRef.current = null;
       setTimeout(() => onNavigate?.('home', text), 900);
       return;
     }
@@ -152,9 +170,23 @@ export default function PlanPage({
     const assistantId = String(Date.now() + 1);
     const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', timestamp: ts };
 
-    const nextMessages = [...messages, userMsg];
-    setMessages([...nextMessages, assistantMsg]);
+    // UI: append to full history so chat panel shows everything
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
     setIsTyping(true);
+
+    // API: only send messages from the current booking session so the agent
+    // never sees passenger details or offer_ids from previous bookings.
+    const sessionMsgs = messages.slice(sessionStartRef.current);
+    // Invisibly append the pending offer_id to this turn's user message.
+    // The agent needs it to call book_flight but must not see it before the
+    // user has provided their passenger details (i.e. in the trigger turn).
+    const apiUserContent = pendingOfferRef.current
+      ? `${text}\n\n[offer_id for this booking: ${pendingOfferRef.current}]`
+      : text;
+    const apiMessages = [
+      ...sessionMsgs.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: apiUserContent },
+    ];
 
     let fullResponse = '';
 
@@ -166,9 +198,7 @@ export default function PlanPage({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
-        }),
+        body: JSON.stringify({ messages: apiMessages }),
       });
 
       if (!res.ok || !res.body) {
@@ -201,6 +231,7 @@ export default function PlanPage({
       const bookingRefMatch = fullResponse.match(/\bPF-[A-Z0-9]{4,10}\b/);
       if (bookingRefMatch && setConfirmedBooking) {
         const ref = bookingRefMatch[0];
+        pendingOfferRef.current = null; // offer consumed — clear so it isn't reused
         try {
           const fetchToken = getToken();
           const bookingRes = await fetch(`${API_BASE}/flights/bookings/${ref}`, {
@@ -239,12 +270,89 @@ export default function PlanPage({
     if (triggeredFlightRef.current === selectedFlight.offer_id) return;
     triggeredFlightRef.current = selectedFlight.offer_id;
 
-    const dateStr = new Date(selectedFlight.departure_at).toLocaleDateString([], {
-      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-    });
+    // Use ISO date directly to avoid timezone shifting from locale formatting
+    const depDate = selectedFlight.departure_at.split('T')[0]; // YYYY-MM-DD
     const cabinLabel = selectedFlight.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const triggerText = `I'd like to book the ${selectedFlight.airline} flight ${selectedFlight.flight_number} from ${selectedFlight.origin_city} (${selectedFlight.origin}) to ${selectedFlight.destination_city} (${selectedFlight.destination}) on ${dateStr} for ${passengerCount} passenger(s) in ${cabinLabel} class at $${selectedFlight.price_per_person}/person. Please search for this flight and help me complete the booking by collecting my passenger details.`;
-    handleSend(triggerText, { skipNavCheck: true });
+
+    // Construct the agent alias offer_id (format matches agent_tools.py make_alias).
+    // Use rawFlightResults (unfiltered, capped to 4) so filtering never shifts the
+    // index — alias indices must match the agent's own [:4]-sliced result order.
+    const indexSource = rawFlightResults ?? flightResults;
+    const selectedIndex = indexSource
+      ? (indexSource.findIndex(f => f.offer_id === selectedFlight.offer_id) + 1) || 1
+      : 1;
+    const offerAlias = `O${selectedIndex}:${selectedFlight.origin}:${selectedFlight.destination}:${depDate}:${selectedFlight.cabin_class}:${passengerCount}`;
+
+    // Store the offer alias in a ref — NOT sent to the agent yet.
+    // It will be invisibly appended to the user's passenger-details reply so the
+    // agent has everything it needs exactly when it calls book_flight, but cannot
+    // act before the user has provided their details.
+    pendingOfferRef.current = offerAlias;
+
+    // Brief display message shown in chat — user-friendly only
+    const displayText = `I'd like to book ${selectedFlight.airline} ${selectedFlight.flight_number} — ${selectedFlight.origin} → ${selectedFlight.destination} on ${depDate}.`;
+
+    // Agent instruction: flight info only, NO offer_id (so agent cannot book yet)
+    const agentText =
+      `I've selected this flight and need help booking it:\n` +
+      `- ${selectedFlight.airline} ${selectedFlight.flight_number}\n` +
+      `- ${selectedFlight.origin_city} (${selectedFlight.origin}) → ${selectedFlight.destination_city} (${selectedFlight.destination})\n` +
+      `- Departure: ${formatTime(selectedFlight.departure_at)} · Arrival: ${formatTime(selectedFlight.arrival_at)}\n` +
+      `- Date: ${depDate} · ${cabinLabel} · ${passengerCount} passenger(s) · $${selectedFlight.price_per_person}/person\n\n` +
+      `Please ask me for my passenger details: first_name and last_name as SEPARATE fields, ` +
+      `date_of_birth (YYYY-MM-DD format), and contact email. Do not attempt to book yet.`;
+
+    const ts = now();
+    const assistantId = String(Date.now() + 1);
+
+    // Record where this booking session starts before adding new messages.
+    // handleSend will slice messages from this index so old booking data is
+    // never sent to the agent.
+    setMessages(prev => {
+      sessionStartRef.current = prev.length;
+      return [
+        ...prev,
+        { id: String(Date.now()), role: 'user' as const, content: displayText, timestamp: ts },
+        { id: assistantId, role: 'assistant' as const, content: '', timestamp: ts },
+      ];
+    });
+    setIsTyping(true);
+
+    // Fresh single-message call — agent has no prior history at all for this turn
+    const token = getToken();
+    fetch(`${API_BASE}/agent/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ messages: [{ role: 'user', content: agentText }] }),
+    })
+      .then(async res => {
+        if (!res.ok || !res.body) throw new Error(`Request failed: ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const raw = decoder.decode(value, { stream: true });
+          for (const line of raw.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const rawChunk = line.slice(6);
+            if (rawChunk === '[DONE]') break;
+            let chunk: string;
+            try { chunk = JSON.parse(rawChunk); } catch { chunk = rawChunk; }
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + chunk } : m));
+          }
+        }
+      })
+      .catch(() => {
+        setMessages(prev => prev.map(m =>
+          m.id === assistantId ? { ...m, content: 'Sorry, something went wrong. Please try again.' } : m
+        ));
+      })
+      .finally(() => setIsTyping(false));
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFlight?.offer_id]);
 
@@ -403,17 +511,51 @@ export default function PlanPage({
             </div>
           </div>
 
-          {/* Outbound flight */}
+          {/* Flight options */}
           <div style={{ marginBottom: 24 }}>
             <SectionHeader
               icon={<PlaneIcon />}
-              heading="Your Selected Flight"
-              subheading={selectedFlight ? routeLabel : 'No flight selected yet'}
+              heading={flightResults && flightResults.length > 0 ? 'Available Flights' : 'Your Selected Flight'}
+              subheading={
+                flightResults && flightResults.length > 0
+                  ? `${flightResults.length} option${flightResults.length > 1 ? 's' : ''} found — select one to book`
+                  : selectedFlight ? routeLabel : 'No flight selected yet'
+              }
               theme="light"
               className="mb-4"
             />
-            <div style={{ marginTop: 14 }}>
-              {selectedFlight ? (
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {flightResults && flightResults.length > 0 ? (
+                flightResults.map((f, i) => {
+                  const isSelected = f.offer_id === (selectedFlightId ?? selectedFlight?.offer_id);
+                  return (
+                    <div
+                      key={f.offer_id}
+                      onClick={() => {
+                        setSelectedFlight?.(f);
+                        setSelectedFlightId?.(f.offer_id);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <FlightCard
+                        airline={f.airline}
+                        flightNumber={f.flight_number}
+                        cabinClass={f.cabin_class.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        departureTime={formatTime(f.departure_at)}
+                        departureCode={f.origin}
+                        arrivalTime={formatTime(f.arrival_at)}
+                        arrivalCode={f.destination}
+                        duration={formatDuration(f.duration_minutes)}
+                        stops={f.stops}
+                        price={f.price_per_person}
+                        currency={f.currency}
+                        recommended={i === 0}
+                        selected={isSelected}
+                      />
+                    </div>
+                  );
+                })
+              ) : selectedFlight ? (
                 <FlightCard
                   airline={selectedFlight.airline}
                   flightNumber={selectedFlight.flight_number}

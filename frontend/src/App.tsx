@@ -286,6 +286,11 @@ export default function App() {
           onNavigate={navigate}
           onSignOut={handleSignOut}
           selectedFlight={selectedFlight}
+          setSelectedFlight={setSelectedFlight}
+          selectedFlightId={selectedFlightId}
+          setSelectedFlightId={setSelectedFlightId}
+          flightResults={flightResults}
+          rawFlightResults={rawFlightResults}
           passengerCount={passengerCount}
           setConfirmedBooking={setConfirmedBooking}
           {...sharedChat}

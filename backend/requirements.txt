@@ -24,5 +24,8 @@ structlog==24.4.0
 # ── HTTP client ────────────────────────────────────────────────────────────────
 httpx==0.27.2
 
+# ── Cache / Queue (Redis) ──────────────────────────────────────────────────────
+redis[asyncio]==5.2.1           # async client for rate limiting; docker-compose runs Redis 7
+
 # ── Email ──────────────────────────────────────────────────────────────────────
 # Resend API is called via httpx (already listed above) — no extra package needed

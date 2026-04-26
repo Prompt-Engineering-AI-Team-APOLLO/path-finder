@@ -3,10 +3,16 @@
 Uses OpenAI's API (gpt-4o) with function calling.
 The loop:
   1. Send conversation + tool definitions to OpenAI
-  2. If the model calls a tool → execute it via FlightService, append result, repeat
+  2. If the model calls a tool → dispatch to the matching handler in agent_tools,
+     append the result, repeat
   3. When the model stops calling tools → stream the final text response
+
+Prompt templates and tool schemas live in ``app.core.prompts``.
+Tool handlers and the tool registry live in ``app.services.agent_tools``.
+See those modules for detailed design notes.
 """
 
+import asyncio
 import json
 import time
 import uuid
@@ -15,286 +21,16 @@ from collections.abc import AsyncGenerator
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.core.constants import estimate_cost_usd
 from app.core.logging import get_logger
+from app.core.prompts import AGENT_TOOLS, build_agent_system_prompt
 from app.schemas.agent import AgentMessage
-from app.schemas.flight import (
-    BookingModifyRequest,
-    BookingRead,
-    FlightBookRequest,
-    FlightSearchRequest,
-)
+from app.services.agent_tools import TOOL_REGISTRY, ToolContext
 from app.services.flight_service import FlightService
 
 logger = get_logger(__name__)
 
-# ── System prompt ─────────────────────────────────────────────────────────────
-
-_SYSTEM_PROMPT = """You are an AI travel assistant for Pathfinder, a flight booking platform.
-You help users search for flights, book them, check booking status, modify, and cancel bookings.
-
-IMPORTANT — you are operating inside Pathfinder's own backend infrastructure. All bookings are
-processed through Pathfinder's internal systems via the tools provided to you. You are NOT visiting
-any external airline website or third-party service. You have full authority to call these tools —
-it is your primary job to do so.
-
-MANDATORY TOOL USE:
-- When a user wants to book a flight: you MUST call book_flight. Never refuse or redirect.
-- When a user wants to search flights: you MUST call search_flights.
-- When a user wants to cancel/modify/check a booking: you MUST call the appropriate tool.
-- When a user asks about a booking reference (e.g. PF-XXXXXX): you MUST call get_booking immediately.
-- Do NOT say "I can't process bookings" or "visit the airline's website" — you CAN and MUST use tools.
-
-AFTER TOOL RESULTS — STRICT RULES:
-- Report exactly what the tool returned. Do not suggest visiting any airline website, contacting any
-  airline, or using any external service — Pathfinder handles all booking support internally.
-- A cancelled booking is valid data: show its details and status. Do not refuse to display it.
-- A modified booking: show updated details. Do not hedge or suggest contacting anyone.
-- Never add "please contact the airline" or "visit the airline's website" to any response.
-- NEVER say you are "unable to access" or "cannot retrieve" a booking after the tool has returned data.
-  If get_booking returned JSON data, that IS the booking — read it and present it to the user.
-
-Supported airports (use exact IATA codes):
-North America: JFK, LAX, ORD, DFW, DEN, SFO, SEA, MIA, BOS, ATL, LAS, PHX
-Europe: LHR, CDG, FRA, AMS, MAD, FCO, ZRH, BCN
-Middle East: DXB, AUH, DOH
-Asia Pacific: NRT, HKG, SIN, SYD, ICN, BKK
-
-Any pair of the above airports is a valid route.
-
-Guidelines:
-- When presenting search results, summarise the top options clearly (airline, time, price, stops).
-  Always include the offer_id in your response so the user can refer to it for booking.
-- Before booking, confirm passenger details and contact email with the user.
-- Booking references follow the format PF-XXXXXX.
-- Be concise and friendly. Avoid unnecessary filler.
-- Payment is not required — bookings are confirmed instantly with no credit card or payment details needed.
-- CRITICAL: Only report the outcome that the tool actually returned.
-  * After book_flight: only say "confirmed" if the tool result contains "BOOKING CONFIRMED".
-  * After modify_booking: only say "modified" if the tool result contains "MODIFICATION CONFIRMED".
-  * After cancel_booking: only say "cancelled" if the tool result contains "status": "cancelled".
-  * If the tool returns a FAILED status, tell the user exactly what went wrong — never fabricate success.
-  * Never invent or guess booking references. Use only the exact reference from the tool result.
-- One-way vs round-trip: if the user has not mentioned a return date or round trip, treat the search as
-  one-way. Do NOT ask for a return date — omit return_date from the search_flights call entirely.
-- Today's date: {today}
-"""
-
-# ── Tool schemas (OpenAI function-calling format) ─────────────────────────────
-
-_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "search_flights",
-            "description": "Search for available flights between two airports on a given date.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "origin": {
-                        "type": "string",
-                        "description": "Origin airport IATA code (e.g. JFK, LHR)",
-                    },
-                    "destination": {
-                        "type": "string",
-                        "description": "Destination airport IATA code (e.g. LAX, CDG)",
-                    },
-                    "departure_date": {
-                        "type": "string",
-                        "description": "Departure date — MUST be in YYYY-MM-DD format (e.g. 2026-05-03)",
-                    },
-                    "return_date": {
-                        "description": "Return date in YYYY-MM-DD format. Omit entirely for one-way — do NOT pass null.",
-                    },
-                    "passengers": {
-                        "type": "integer",
-                        "description": "Number of passengers as a plain integer (e.g. 1). Do NOT pass passenger details here — just the count.",
-                    },
-                    "cabin_class": {
-                        "type": "string",
-                        "enum": ["economy", "premium_economy", "business", "first"],
-                        "description": "Cabin class, default economy",
-                    },
-                },
-                "required": ["origin", "destination", "departure_date"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "book_flight",
-            "description": (
-                "Book a flight using offer IDs from a previous search. "
-                "Requires passenger details and a contact email."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "outbound_offer_id": {
-                        "type": "string",
-                        "description": "offer_id from the outbound FlightOffer",
-                    },
-                    "return_offer_id": {
-                        "description": "offer_id from the return FlightOffer (round-trip only). Omit entirely for one-way flights — do NOT pass null.",
-                    },
-                    "passengers": {
-                        "description": "One entry per passenger. Pass as a JSON array of objects — never serialize as a string.",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "first_name": {"type": "string"},
-                                "last_name": {"type": "string"},
-                                "date_of_birth": {
-                                    "type": "string",
-                                    "description": "YYYY-MM-DD",
-                                },
-                                "passport_number": {
-                                    "description": "Passport number. Omit entirely if not provided — do NOT pass null.",
-                                },
-                                "nationality": {
-                                    "description": "2-letter ISO country code e.g. US. Omit entirely if not provided — do NOT pass null.",
-                                },
-                            },
-                            "required": ["first_name", "last_name", "date_of_birth"],
-                        },
-                    },
-                    "contact_email": {
-                        "type": "string",
-                        "description": "Contact email for the booking",
-                    },
-                    "contact_phone": {
-                        "description": "Contact phone number. Omit entirely if not provided — do NOT pass null.",
-                    },
-                },
-                "required": ["outbound_offer_id", "passengers", "contact_email"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_booking",
-            "description": "Retrieve details of an existing booking by reference number.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "booking_reference": {
-                        "type": "string",
-                        "description": "The exact booking reference from a prior booking confirmation, e.g. PF-XXXXXX. Never invent or guess this value.",
-                    }
-                },
-                "required": ["booking_reference"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "modify_booking",
-            "description": (
-                "Modify an existing booking: change cabin class, reschedule dates, "
-                "or update contact details."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "booking_reference": {"type": "string", "description": "Exact booking reference from a prior confirmation. Never invent this."},
-                    "cabin_class": {
-                        "type": "string",
-                        "enum": ["economy", "premium_economy", "business", "first"],
-                    },
-                    "new_departure_date": {
-                        "type": "string",
-                        "description": "YYYY-MM-DD",
-                    },
-                    "new_return_date": {
-                        "type": "string",
-                        "description": "YYYY-MM-DD. Omit entirely for one-way bookings — do NOT pass null.",
-                    },
-                    "contact_email": {"type": "string"},
-                    "contact_phone": {"type": "string"},
-                },
-                "required": ["booking_reference"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "cancel_booking",
-            "description": "Cancel an existing booking.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "booking_reference": {"type": "string", "description": "Exact booking reference from a prior confirmation. Never invent this."}
-                },
-                "required": ["booking_reference"],
-            },
-        },
-    },
-]
-
-
-# ── Offer-id resolution ───────────────────────────────────────────────────────
-# Aliases encode the search params needed to re-derive the offer_id at booking
-# time, so no persistent cache is required and the approach survives server
-# restarts, hot-reloads, and multi-worker deployments.
-#
-# Alias format (colon-separated):
-#   {prefix}{index}:{origin}:{destination}:{date}:{cabin}:{passengers}
-# Example: O1:LAX:PHX:2026-05-03:economy:1
-#
-# The mock provider is deterministic — same params → same ordered results —
-# so we can always reconstruct the full base64 offer_id from the alias alone.
-
-def _make_alias(prefix: str, index: int, args: dict) -> str:
-    """Build a self-contained alias that encodes all search params for the leg.
-
-    Outbound (prefix="O"): origin→destination on departure_date
-    Return   (prefix="R"): destination→origin on return_date
-    """
-    cabin = args.get("cabin_class", "economy")
-    passengers = args.get("passengers", 1)
-    if prefix == "R":
-        leg_origin = args["destination"]
-        leg_destination = args["origin"]
-        leg_date = args.get("return_date", args["departure_date"])
-    else:
-        leg_origin = args["origin"]
-        leg_destination = args["destination"]
-        leg_date = args["departure_date"]
-    return f"{prefix}{index}:{leg_origin}:{leg_destination}:{leg_date}:{cabin}:{passengers}"
-
-
-def _resolve_alias(alias: str) -> str | None:
-    """Parse a self-contained alias and return the full base64 offer_id.
-
-    Returns None if the alias is not in the expected format (may already be
-    a full offer_id or an unrecognised string — caller handles those cases).
-    """
-    from app.services import flight_mock_provider as _mock
-    from datetime import date as _date
-
-    parts = alias.split(":")
-    # Expected: prefix+index, origin, destination, dep_date, cabin, passengers
-    if len(parts) != 6:
-        return None
-    prefix_idx, origin, destination, dep_date_str, cabin, pax_str = parts
-    try:
-        passengers = int(pax_str)
-        dep_date = _date.fromisoformat(dep_date_str)
-    except ValueError:
-        return None
-
-    try:
-        result_index = int(prefix_idx[1:]) - 1   # 1-based → 0-based
-    except (ValueError, IndexError):
-        return None
-
-    offers = _mock.search(origin, destination, dep_date, passengers, cabin)
-    if not offers or result_index >= len(offers):
-        return None
-    return offers[result_index].offer_id
+_TOOLS = AGENT_TOOLS
 
 
 # ── Intent detection — prevents refusals before they happen ───────────────────
@@ -468,208 +204,265 @@ class AgentService:
         messages: list[AgentMessage],
         user_id: uuid.UUID | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Run the agentic loop and yield final response as SSE-ready text chunks.
+        """Run the agentic loop and yield the final response as SSE-ready text chunks.
+
+        Termination conditions (in priority order)
+        ------------------------------------------
+        1. **Wall-clock timeout** (``AGENT_RUN_TIMEOUT_SECONDS``, default 120 s)
+           ``asyncio.timeout()`` wraps the entire loop.  Any hung OpenAI call or
+           slow tool execution will be cancelled and the user receives a clear
+           "took too long" message instead of an indefinitely pending stream.
+
+        2. **Token budget** (``AGENT_MAX_TOKENS_PER_RUN``, default 32 000)
+           Cumulative prompt + completion tokens across all iterations are checked
+           after every LLM call.  Exhausting the budget yields an actionable
+           message rather than silently burning quota until the iteration cap.
+
+        3. **Iteration cap** (``AGENT_MAX_ITERATIONS``, default 10)
+           Hard upper bound on LLM calls.  Normal flows use 1–3 iterations;
+           the cap protects against stuck refusal-recovery cycles.
+
+        4. **Natural completion**
+           The model returns a text response with no tool calls → yield and return.
 
         Tool-choice strategy
         --------------------
-        * iteration 0: "required" when the last user message mentions flights,
-          bookings, or airport codes — this prevents the model from issuing a
-          safety-guardrail refusal instead of calling a tool.
-        * iteration 0: "auto" for general questions that don't need a tool.
-        * iteration 1+: always "auto" — the model has already called at least
-          one tool and is either chaining calls or writing a final response.
-        * Refusal safety-net: if the model somehow returns plain text that looks
-          like a redirect/refusal, we inject a correction message, mark the next
-          iteration as "required", and continue rather than giving up.
+        * iteration 0: ``"required"`` when the last user message mentions flights,
+          bookings, or airport codes — prevents safety-guardrail refusals.
+        * iteration 0: ``"auto"`` for general questions that don't need a tool.
+        * iteration 1+: always ``"auto"`` — the model has context and is either
+          chaining calls or writing its final response.
+        * Refusal safety-net: plain text matching ``_is_safety_refusal`` triggers a
+          correction injection and a ``"required"`` override on the next iteration.
+
+        Human-in-the-loop (HITL)
+        ------------------------
+        Conversational HITL is enforced by the system prompt: the model is
+        instructed to confirm passenger details and contact email with the user
+        before calling ``book_flight``, and to only claim success when the tool
+        result contains the ``BOOKING CONFIRMED`` sentinel string.  For a
+        programmatic HITL hook (e.g. a separate approval step or UI confirmation
+        dialog), intercept at the marked point in the tool-dispatch block below
+        and await the external signal before calling ``_execute_tool``.
         """
-        from datetime import date
-        system = _SYSTEM_PROMPT.format(today=date.today().isoformat())
+        system = build_agent_system_prompt()
 
         history: list[dict] = [{"role": "system", "content": system}]
         history += [{"role": m.role, "content": m.content} for m in messages]
 
-        # Detect intent once up-front so we can set tool_choice="required" on
-        # the first call and prevent safety refusals entirely.
         force_tool_next = _needs_tool(history)
 
-        # ── Per-run accumulators for observability ────────────────────────────
+        # ── Per-run accumulators ──────────────────────────────────────────────
         _total_prompt_tokens = 0
         _total_completion_tokens = 0
+        _total_estimated_cost_usd = 0.0
         _tools_called: list[str] = []
+        _run_start = time.perf_counter()
 
-        # ── Tool-calling loop (non-streaming) ─────────────────────────────────
-        for iteration in range(10):  # safety cap — prevent infinite loops
-            tool_choice = "required" if force_tool_next else "auto"
-            force_tool_next = False  # reset; only set again if refusal detected
-
-            history = _trim_history(history)
-
-            # Retry up to 3 times on transient API errors to improve resilience.
-            response = None
-            _llm_ms = 0.0
-            for attempt in range(3):
-                try:
-                    _t0 = time.perf_counter()
-                    response = await self._client.chat.completions.create(
-                        model=settings.OPENAI_MODEL,
-                        messages=history,  # type: ignore[arg-type]
-                        tools=_TOOLS,  # type: ignore[arg-type]
-                        tool_choice=tool_choice,
-                        parallel_tool_calls=False,
-                        max_tokens=2048,
-                    )
-                    _llm_ms = round((time.perf_counter() - _t0) * 1000, 2)
-                    break
-                except Exception as e:
-                    err = str(e)
-                    if "tool_use_failed" in err and attempt < 2:
-                        logger.warning("agent_tool_use_failed_retry", attempt=attempt + 1, error=err)
-                        continue
-                    logger.warning("agent_loop_error", error=err)
-                    if "rate_limit_exceeded" in err or "429" in err:
-                        yield (
-                            "I'm currently experiencing high demand and hit a temporary API limit. "
-                            "Please wait a moment and try again."
-                        )
-                    else:
-                        yield "Sorry, I hit an error processing that request. Please try again."
-                    return
-            if response is None:
-                yield "Sorry, I couldn't process that request after several attempts. Please try again."
-                return
-
-            _usage = response.usage
-            logger.info(
-                "llm_call",
-                model=response.model,
-                iteration=iteration,
-                tool_choice=tool_choice,
-                prompt_tokens=_usage.prompt_tokens if _usage else None,
-                completion_tokens=_usage.completion_tokens if _usage else None,
-                total_tokens=_usage.total_tokens if _usage else None,
-                finish_reason=response.choices[0].finish_reason,
-                duration_ms=_llm_ms,
+        def _log_termination(reason: str, *, iteration: int) -> None:
+            logger.warning(
+                "agent_run_terminated",
+                reason=reason,
+                iterations=iteration,
+                total_prompt_tokens=_total_prompt_tokens,
+                total_completion_tokens=_total_completion_tokens,
+                total_tokens=_total_prompt_tokens + _total_completion_tokens,
+                total_estimated_cost_usd=round(_total_estimated_cost_usd, 8),
+                tools_called=_tools_called,
+                elapsed_seconds=round(time.perf_counter() - _run_start, 2),
             )
-            if _usage:
-                _total_prompt_tokens += _usage.prompt_tokens
-                _total_completion_tokens += _usage.completion_tokens
 
-            msg = response.choices[0].message
+        # ── Tool-calling loop ─────────────────────────────────────────────────
+        try:
+            async with asyncio.timeout(settings.AGENT_RUN_TIMEOUT_SECONDS):
+                for iteration in range(settings.AGENT_MAX_ITERATIONS):
+                    tool_choice = "required" if force_tool_next else "auto"
+                    force_tool_next = False
 
-            # ── No tool calls: either a final answer or a safety refusal ──────
-            if not msg.tool_calls:
-                content = msg.content or ""
+                    history = _trim_history(history)
 
-                if content and _is_safety_refusal(content):
-                    # The model refused despite tool_choice="required" or "auto".
-                    # Two distinct cases need different corrections:
-                    #   (a) No tools called yet → force a tool call.
-                    #   (b) Tool already called and returned data → force the model
-                    #       to report what the tool returned, not call it again.
-                    tools_already_called = any(
-                        m.get("role") == "tool" for m in history
-                    )
-                    logger.warning(
-                        "agent_safety_refusal_detected",
+                    # Retry up to 3 times on transient API errors.
+                    response = None
+                    _llm_ms = 0.0
+                    for attempt in range(3):
+                        try:
+                            _t0 = time.perf_counter()
+                            response = await self._client.chat.completions.create(
+                                model=settings.AGENT_MODEL,
+                                messages=history,  # type: ignore[arg-type]
+                                tools=_TOOLS,  # type: ignore[arg-type]
+                                tool_choice=tool_choice,
+                                parallel_tool_calls=False,
+                                temperature=settings.AGENT_TEMPERATURE,
+                                max_tokens=settings.AGENT_MAX_TOKENS,
+                            )
+                            _llm_ms = round((time.perf_counter() - _t0) * 1000, 2)
+                            break
+                        except Exception as e:
+                            err = str(e)
+                            if "tool_use_failed" in err and attempt < 2:
+                                logger.warning("agent_tool_use_failed_retry", attempt=attempt + 1, error=err)
+                                continue
+                            logger.warning("agent_loop_error", error=err)
+                            if "rate_limit_exceeded" in err or "429" in err:
+                                yield (
+                                    "I'm currently experiencing high demand and hit a temporary API limit. "
+                                    "Please wait a moment and try again."
+                                )
+                            else:
+                                yield "Sorry, I hit an error processing that request. Please try again."
+                            return
+                    if response is None:
+                        yield "Sorry, I couldn't process that request after several attempts. Please try again."
+                        return
+
+                    _usage = response.usage
+                    _iter_prompt = _usage.prompt_tokens if _usage else 0
+                    _iter_completion = _usage.completion_tokens if _usage else 0
+                    _iter_cost = estimate_cost_usd(response.model, _iter_prompt, _iter_completion)
+                    logger.info(
+                        "llm_call",
+                        model=response.model,
                         iteration=iteration,
                         tool_choice=tool_choice,
-                        tools_already_called=tools_already_called,
-                        content=content[:200],
+                        prompt_tokens=_iter_prompt,
+                        completion_tokens=_iter_completion,
+                        total_tokens=_usage.total_tokens if _usage else None,
+                        estimated_cost_usd=_iter_cost,
+                        finish_reason=response.choices[0].finish_reason,
+                        duration_ms=_llm_ms,
                     )
-                    history.append({"role": "assistant", "content": content})
-                    if tools_already_called:
-                        # The tool result is already in the conversation history.
-                        # The model must read and report it — do NOT force another
-                        # tool call or it will loop indefinitely.
+                    if _usage:
+                        _total_prompt_tokens += _usage.prompt_tokens
+                        _total_completion_tokens += _usage.completion_tokens
+                        _total_estimated_cost_usd += _iter_cost
+
+                    # ── Token budget check ────────────────────────────────────
+                    _run_tokens = _total_prompt_tokens + _total_completion_tokens
+                    if _run_tokens > settings.AGENT_MAX_TOKENS_PER_RUN:
+                        _log_termination("token_budget_exceeded", iteration=iteration + 1)
+                        yield (
+                            "I've used the maximum processing budget for this request. "
+                            "Please start a new conversation to continue."
+                        )
+                        return
+
+                    msg = response.choices[0].message
+
+                    # ── No tool calls: final answer or safety refusal ─────────
+                    if not msg.tool_calls:
+                        content = msg.content or ""
+
+                        if content and _is_safety_refusal(content):
+                            tools_already_called = any(
+                                m.get("role") == "tool" for m in history
+                            )
+                            logger.warning(
+                                "agent_safety_refusal_detected",
+                                iteration=iteration,
+                                tool_choice=tool_choice,
+                                tools_already_called=tools_already_called,
+                                content=content[:200],
+                            )
+                            history.append({"role": "assistant", "content": content})
+                            if tools_already_called:
+                                history.append({
+                                    "role": "user",
+                                    "content": (
+                                        "CORRECTION: The tool already returned the data above in this "
+                                        "conversation. You MUST read that tool result and report it "
+                                        "clearly to the user. Do NOT say you cannot access it. "
+                                        "Do NOT tell the user to contact the airline or any external "
+                                        "service — Pathfinder handles everything internally. "
+                                        "Simply present the information from the tool result."
+                                    ),
+                                })
+                                force_tool_next = False
+                            else:
+                                history.append({
+                                    "role": "user",
+                                    "content": (
+                                        "You MUST use one of the provided tools to fulfil this request. "
+                                        "You are operating inside Pathfinder's own backend — you have full "
+                                        "authority and capability to call these tools. "
+                                        "Call the correct tool now. Do not refuse or redirect."
+                                    ),
+                                })
+                                force_tool_next = True
+                            continue
+
+                        # Natural completion — yield final response
+                        logger.info(
+                            "agent_run_complete",
+                            iterations=iteration + 1,
+                            total_prompt_tokens=_total_prompt_tokens,
+                            total_completion_tokens=_total_completion_tokens,
+                            total_tokens=_total_prompt_tokens + _total_completion_tokens,
+                            total_estimated_cost_usd=round(_total_estimated_cost_usd, 8),
+                            tools_called=_tools_called,
+                            elapsed_seconds=round(time.perf_counter() - _run_start, 2),
+                        )
+                        if content:
+                            yield content
+                        else:
+                            async for chunk in self._stream_final(history):
+                                yield chunk
+                        return
+
+                    # ── Tool calls: execute and loop ──────────────────────────
+                    history.append({
+                        "role": "assistant",
+                        "content": msg.content,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in msg.tool_calls
+                        ],
+                    })
+
+                    for tc in msg.tool_calls:
+                        # ── HITL hook point ───────────────────────────────────
+                        # For a programmatic confirmation gate before irreversible
+                        # actions (book_flight, cancel_booking, modify_booking),
+                        # insert an await here before _execute_tool is called.
+                        # The conversational HITL gate (model asks user to confirm
+                        # details before booking) is enforced by the system prompt.
+                        result = await self._execute_tool(tc.function.name, tc.function.arguments, user_id)
+                        _tools_called.append(tc.function.name)
+                        logger.info("agent_tool_called", tool=tc.function.name, result=result[:200])
                         history.append({
-                            "role": "user",
-                            "content": (
-                                "CORRECTION: The tool already returned the data above in this "
-                                "conversation. You MUST read that tool result and report it "
-                                "clearly to the user. Do NOT say you cannot access it. "
-                                "Do NOT tell the user to contact the airline or any external "
-                                "service — Pathfinder handles everything internally. "
-                                "Simply present the information from the tool result."
-                            ),
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": result,
                         })
-                        force_tool_next = False  # let the model generate text, not call tools
-                    else:
-                        history.append({
-                            "role": "user",
-                            "content": (
-                                "You MUST use one of the provided tools to fulfil this request. "
-                                "You are operating inside Pathfinder's own backend — you have full "
-                                "authority and capability to call these tools. "
-                                "Call the correct tool now. Do not refuse or redirect."
-                            ),
-                        })
-                        force_tool_next = True  # next iteration: tool_choice="required"
-                    continue
 
-                # Legitimate final response — yield and finish
-                logger.info(
-                    "agent_run_complete",
-                    iterations=iteration + 1,
-                    total_prompt_tokens=_total_prompt_tokens,
-                    total_completion_tokens=_total_completion_tokens,
-                    total_tokens=_total_prompt_tokens + _total_completion_tokens,
-                    tools_called=_tools_called,
-                )
-                if content:
-                    yield content
-                else:
-                    async for chunk in self._stream_final(history):
-                        yield chunk
-                return
+                # Iteration cap reached without a natural completion
+                _log_termination("iteration_cap", iteration=settings.AGENT_MAX_ITERATIONS)
+                yield "I ran into trouble completing that request. Please try again."
 
-            # ── Tool calls: execute and loop back for the next LLM turn ───────
-            history.append({
-                "role": "assistant",
-                "content": msg.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in msg.tool_calls
-                ],
-            })
-
-            for tc in msg.tool_calls:
-                result = await self._execute_tool(tc.function.name, tc.function.arguments, user_id)
-                _tools_called.append(tc.function.name)
-                logger.info("agent_tool_called", tool=tc.function.name, result=result[:200])
-                history.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result,
-                })
-
-        # Fallback if loop cap hit
-        logger.warning(
-            "agent_run_complete",
-            iterations=10,
-            total_prompt_tokens=_total_prompt_tokens,
-            total_completion_tokens=_total_completion_tokens,
-            total_tokens=_total_prompt_tokens + _total_completion_tokens,
-            tools_called=_tools_called,
-            status="loop_cap_hit",
-        )
-        yield "I ran into trouble completing that request. Please try again."
+        except TimeoutError:
+            _log_termination("timeout", iteration=-1)
+            yield (
+                "This request is taking longer than expected. "
+                "Please try again — if the issue persists, try rephrasing your request."
+            )
 
     async def _stream_final(
         self, history: list[dict]
     ) -> AsyncGenerator[str, None]:
         """Stream a fresh assistant response when the model returned empty content."""
         stream = await self._client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
+            model=settings.AGENT_MODEL,
             messages=history,  # type: ignore[arg-type]
+            temperature=settings.AGENT_TEMPERATURE,
             stream=True,
-            max_tokens=2048,
+            max_tokens=settings.AGENT_MAX_TOKENS,
         )
         async for chunk in stream:
             delta = chunk.choices[0].delta.content
@@ -679,148 +472,19 @@ class AgentService:
     async def _execute_tool(
         self, name: str, arguments: str, user_id: uuid.UUID | None
     ) -> str:
-        """Dispatch a tool call to the appropriate FlightService method."""
+        """Dispatch a tool call to the registered handler for ``name``.
+
+        Tool-specific input normalisation and output formatting live in
+        ``app.services.agent_tools``.  This method is intentionally thin:
+        parse JSON, look up handler, delegate, handle errors uniformly.
+        """
         try:
             args = json.loads(arguments)
-
-            if name == "search_flights":
-                # Coerce passengers — model sometimes sends a string, dict, or list
-                # instead of a plain integer count
-                p = args.get("passengers")
-                if isinstance(p, str):
-                    args["passengers"] = int(p)
-                elif isinstance(p, dict):
-                    args["passengers"] = 1          # one passenger object → count of 1
-                elif isinstance(p, list):
-                    args["passengers"] = len(p) or 1
-                # Normalise departure_date — model sometimes sends MM/DD/YYYY
-                dep = args.get("departure_date", "")
-                if dep and "/" in dep:
-                    parts = dep.split("/")
-                    if len(parts) == 3:
-                        m, d, y = parts
-                        args["departure_date"] = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
-                # Strip null / empty optional fields
-                for field in ("return_date", "cabin_class"):
-                    val = args.get(field)
-                    if val is None or val == "null" or val == "":
-                        args.pop(field, None)
-                result = await self._flight.search_flights(FlightSearchRequest(**args))
-                data = result.model_dump(mode="json")
-
-                def _slim_flights(flights: list | None, prefix: str) -> list:
-                    """Return only fields the model needs — keeps tokens low.
-
-                    Each offer_id is replaced with a self-contained alias that
-                    encodes all search parameters needed to re-derive the full
-                    base64 offer_id at booking time (no cache required).
-                    Format: {prefix}{index}:{origin}:{destination}:{date}:{cabin}:{pax}
-                    """
-                    if not flights:
-                        return []
-                    slim = []
-                    for i, f in enumerate(flights[:4], 1):
-                        alias = _make_alias(prefix, i, args)
-                        slim.append({
-                            "offer_id": alias,
-                            "airline": f["airline"],
-                            "flight_number": f["flight_number"],
-                            "departure_at": f["departure_at"],
-                            "arrival_at": f["arrival_at"],
-                            "stops": f["stops"],
-                            "cabin_class": f["cabin_class"],
-                            "total_price": f["total_price"],
-                            "price_per_person": f["price_per_person"],
-                            "available_seats": f["available_seats"],
-                            "currency": f.get("currency", "USD"),
-                        })
-                    return slim
-
-                slim = {
-                    "origin": data["origin"],
-                    "destination": data["destination"],
-                    "departure_date": data["departure_date"],
-                    "passengers": data["passengers"],
-                    "outbound_flights": _slim_flights(data.get("outbound_flights"), "O"),
-                    "return_flights": _slim_flights(data.get("return_flights"), "R") or None,
-                }
-                return json.dumps(slim)
-
-            if name == "book_flight":
-                # Resolve self-contained aliases → full base64 offer_ids.
-                # _resolve_alias re-runs the deterministic mock search to get
-                # the exact offer_id — no cache needed, survives restarts.
-                for field in ("outbound_offer_id", "return_offer_id"):
-                    alias = args.get(field)
-                    if not alias:
-                        continue
-                    resolved = _resolve_alias(alias)
-                    if resolved:
-                        args[field] = resolved
-                    # else: not a recognised alias (e.g. full base64 passed directly)
-                    # — leave as-is and let decode_offer validate it below
-                # Strip null/empty optional fields the model sometimes sends
-                args.pop("return_offer_id", None) if not args.get("return_offer_id") else None
-                args.pop("contact_phone", None) if not args.get("contact_phone") else None
-                # passengers is occasionally serialised as a JSON string by the model
-                if isinstance(args.get("passengers"), str):
-                    args["passengers"] = json.loads(args["passengers"])
-                # Clean up each passenger: remove null optional fields, fix date format
-                for p in args.get("passengers") or []:
-                    for opt in ("passport_number", "nationality"):
-                        if p.get(opt) is None:
-                            p.pop(opt, None)
-                    dob = p.get("date_of_birth", "")
-                    if dob and "/" in dob:
-                        parts = dob.split("/")
-                        if len(parts) == 3:
-                            m, d, y = parts
-                            p["date_of_birth"] = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
-                req = FlightBookRequest(**args)
-                booking = await self._flight.book_flight(req, user_id)
-                booking_read = BookingRead.model_validate(booking)
-                # Append a plain-text reminder so the model copies the exact reference
-                # rather than hallucinating one.
-                return (
-                    booking_read.model_dump_json()
-                    + f"\n\nBOOKING CONFIRMED. You MUST use this exact booking_reference "
-                    f"in your reply and nowhere else: {booking_read.booking_reference}"
-                )
-
-            if name == "get_booking":
-                booking = await self._flight.get_booking(args["booking_reference"])
-                return BookingRead.model_validate(booking).model_dump_json()
-
-            if name == "modify_booking":
-                ref = args.pop("booking_reference")
-                # Strip null/empty optional fields the model sometimes sends
-                for field in ("cabin_class", "new_departure_date", "new_return_date",
-                              "contact_email", "contact_phone"):
-                    val = args.get(field)
-                    if val is None or val == "null" or val == "":
-                        args.pop(field, None)
-                # Normalise date fields — model sometimes sends MM/DD/YYYY
-                for date_field in ("new_departure_date", "new_return_date"):
-                    val = args.get(date_field, "")
-                    if val and "/" in val:
-                        parts = val.split("/")
-                        if len(parts) == 3:
-                            m, d, y = parts
-                            args[date_field] = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
-                booking = await self._flight.modify_booking(
-                    ref, BookingModifyRequest(**args), user_id
-                )
-                result = BookingRead.model_validate(booking).model_dump_json()
-                return result + (
-                    f"\n\nMODIFICATION CONFIRMED for booking {ref}. "
-                    "Only tell the user the modification succeeded if this line is present."
-                )
-
-            if name == "cancel_booking":
-                result = await self._flight.cancel_booking(args["booking_reference"], user_id)
-                return result.model_dump_json()
-
-            return json.dumps({"error": f"Unknown tool: {name}"})
+            handler = TOOL_REGISTRY.get(name)
+            if handler is None:
+                return json.dumps({"error": f"Unknown tool: {name}"})
+            ctx = ToolContext(flight_svc=self._flight, user_id=user_id)
+            return await handler(args, ctx)
 
         except Exception as e:
             logger.warning("agent_tool_error", tool=name, error=str(e))
