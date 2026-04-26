@@ -5,18 +5,19 @@ for Pathfinder's AI flight-booking assistant.
 
 ---
 
-## Router Separation: `/ai` vs `/agent`
+## Router Separation: `/ai` vs `/agent` vs `/rag`
 
-Two routers coexist in `app/api/v1/router.py` — they serve different purposes:
+Three routers coexist in `app/api/v1/router.py` — they serve different purposes:
 
 | Router | Endpoint | Purpose |
 |--------|----------|---------|
-| `/ai`  | `POST /ai/chat`, `/ai/chat/stream`, `/ai/embed`, `/ai/search` | Raw LLM primitives. Thin pass-through to `AIService` (OpenAI wrapper). No tool use, no domain logic. Used by the general chat UI and RAG pipeline. |
+| `/ai`  | `POST /ai/chat`, `/ai/chat/stream`, `/ai/embed`, `/ai/search` | Raw LLM primitives. Thin pass-through to `AIService` (OpenAI wrapper). No tool use, no domain logic. Used by the general chat UI. |
 | `/agent` | `POST /agent/chat` | Domain-aware agentic loop. Runs tool-calling cycles against `FlightService`. Always streams SSE. |
+| `/rag` | `POST /rag/ingest`, `/rag/retrieve`, `/rag/generate`, `DELETE /rag/documents/{doc_id}` | Retrieval-Augmented Generation pipeline. Ingests documents (chunk → embed → upsert), retrieves context via vector search, and generates grounded answers via `RAGService`. |
 
-The split keeps generic LLM utility endpoints (embeddings, free-form chat) decoupled
-from the flight-booking domain. Adding a new domain agent later (hotels, car hire)
-does not require touching the `/ai` layer.
+The split keeps generic LLM utility endpoints, the flight-booking agent, and the RAG pipeline
+independently deployable and testable. Adding a new domain agent (hotels, car hire) or a
+new knowledge base does not require touching the other layers.
 
 ---
 
@@ -55,13 +56,15 @@ The loop in `app/services/agent_service.py` follows the standard ReAct pattern:
 
 ```
 while iterations < 10:
-    response = LLM(history, tools, tool_choice)
+    response = LLM(history, tools, tool_choice)   # retried up to 3× on transient errors
     
     if no tool calls:
-        if safety_refusal(response):
-            inject correction → continue   # secondary safety net
+        if empty content:
+            stream final via _stream_final()       # fallback streaming call
+        elif safety_refusal(response):
+            inject correction → continue           # secondary safety net
         else:
-            yield response → done          # final answer
+            yield response → done                  # final answer
     
     for each tool_call:
         result = execute_tool(tool_call)
@@ -73,6 +76,16 @@ while iterations < 10:
 **Iteration cap** — 10 is intentionally generous. The booking pipeline rarely needs
 more than 3 iterations (search → user confirms → book). The cap prevents runaway
 costs from a stuck refusal loop.
+
+**Transient error retry** — each LLM call is retried up to 3 times when `tool_use_failed`
+appears in the error. On a non-retryable error (rate limit → 429, other API errors),
+a user-facing message is yielded immediately and the run aborts. Rate-limit errors
+produce a specific "high demand" message; other errors produce a generic retry prompt.
+
+**Cost tracking** — after every LLM response `estimate_cost_usd(model, prompt_tokens, completion_tokens)`
+annotates the `llm_call` log event with `estimated_cost_usd`. Cumulative cost across all
+iterations is tracked in `_total_estimated_cost_usd` and emitted on `agent_run_complete`
+and all `agent_run_terminated` events as `total_estimated_cost_usd`.
 
 **Tool-choice strategy**
 
@@ -139,13 +152,16 @@ Sequential execution is enforced at the API level, not by prompt instruction.
 The mock flight provider returns opaque base64 `offer_id` values. Passing these
 verbatim in the context window would waste tokens and risk the model truncating them.
 
-Instead, `_make_alias` encodes all search parameters into a short, human-readable
-alias (`O1:JFK:LAX:2026-05-03:economy:1`). At booking time, `_resolve_alias`
+Instead, `make_alias` encodes all search parameters into a short, human-readable
+alias (`O1:JFK:LAX:2026-05-03:economy:1`). At booking time, `resolve_alias`
 re-runs the deterministic mock search and recovers the full `offer_id`.
 
 This is possible because `flight_mock_provider.search` is **deterministic** —
 same inputs always produce the same ordered results. No cache is needed and the
 system survives server restarts and multi-worker deployments.
+
+Both functions are exported from `app/services/agent_tools.py` (public API, no
+leading underscore) so tests can call them directly without invoking the full agent.
 
 ---
 
@@ -232,13 +248,86 @@ booking context intact for multi-turn flows.
 | File | Role |
 |------|------|
 | `app/api/v1/endpoints/agent.py` | HTTP layer: SSE streaming, rate limiting, error boundary |
-| `app/services/agent_service.py` | Agentic loop, refusal recovery, history trimming, tool dispatch |
-| `app/services/agent_tools.py` | Tool handlers, `TOOL_REGISTRY`, input normalisation, alias system |
+| `app/api/v1/endpoints/ai.py` | Raw LLM endpoints: chat, stream, embed, vector search |
+| `app/api/v1/endpoints/rag.py` | RAG endpoints: ingest, retrieve, generate, delete |
+| `app/services/agent_service.py` | Agentic loop, refusal recovery, history trimming, tool dispatch, cost tracking |
+| `app/services/agent_tools.py` | Tool handlers, `TOOL_REGISTRY`, input normalisation, `make_alias`/`resolve_alias` |
+| `app/services/ai_service.py` | `AIService` — OpenAI wrapper with retry, `chat_structured`, `AIServiceError` |
+| `app/services/rag_service.py` | `RAGService` — chunk, embed, retrieve, generate pipeline |
 | `app/services/flight_service.py` | Domain implementation: search, book, get, modify, cancel |
+| `app/repositories/conversation.py` | `ConversationRepository` / `MessageRepository` — optional chat persistence |
 | `app/core/prompts.py` | System prompt + OpenAI tool schemas — all LLM-facing text lives here |
+| `app/core/constants.py` | `estimate_cost_usd()`, `AI_TOKEN_COSTS` pricing table, other app constants |
 | `app/schemas/flight.py` | Typed Pydantic schemas for all tool inputs and outputs |
 | `app/schemas/agent.py` | `AgentMessage`, `AgentChatRequest` — wire format between client and endpoint |
 | `app/api/deps.py` | `AgentServiceDep` — wires `AgentService(FlightService(db))` |
+
+---
+
+## AIService — Retry & Error Handling
+
+`app/services/ai_service.py` wraps `AsyncOpenAI` and translates raw OpenAI errors
+into structured outcomes so callers never receive a bare `openai.*Error`:
+
+| Outcome | Trigger | Behaviour |
+|---------|---------|-----------|
+| Retry with back-off | `RateLimitError`, `APIConnectionError`, transient `APIStatusError` | Up to 3 attempts, exponential delay (1 s → 2 s → 4 s). Raises `AIServiceError` if all fail. |
+| Immediate `AIServiceError` | Invalid key, context-length exceeded, content policy | User-facing `user_message` safe to forward to the client. |
+| Structured-output failure | `pydantic.ValidationError` in `chat_structured` | Raises `AIServiceError` — never leaks Pydantic internals. |
+
+**Methods**:
+- `chat(messages, ...)` — non-streaming response, returns `(text, tokens)`.
+- `chat_stream(messages, ...)` — async generator of text chunks.
+- `chat_structured(messages, response_schema, ...)` — JSON object response validated against a Pydantic model.
+- `embed(texts)` — batched embeddings via `text-embedding-3-small`.
+
+Cost for each call is annotated in logs via `estimate_cost_usd` from `app.core.constants`.
+
+---
+
+## RAGService — Retrieval-Augmented Generation
+
+`app/services/rag_service.py` implements a three-stage pipeline:
+
+### Stage 1 — Ingest
+`RAGService.ingest(doc)` chunks, embeds, and upserts a document:
+1. **Sentence-aware sliding-window chunking** — splits on paragraph and sentence
+   boundaries (`_CHUNK_SIZE_CHARS = 1 200`, `_CHUNK_OVERLAP_CHARS = 240`).
+   Each chunk targets ~300 tokens, small enough for embedding coherence, large
+   enough to be semantically self-contained.
+2. **Batch embedding** — all chunk texts sent in one `AIService.embed()` call.
+3. **Pinecone upsert** — each chunk stored with metadata:
+   `doc_id`, `chunk_index`, `total_chunks`, `source`, `doc_type`, `char_offset`.
+
+### Stage 2 — Retrieve
+`RAGService.retrieve(query)` embeds the query and runs a filtered vector search:
+1. Metadata filters (AND-ed) applied server-side in Pinecone before scoring.
+2. Chunks below `score_threshold` dropped.
+3. Adjacent same-document chunks merged to remove overlap duplication.
+4. Greedy token-budget packing (highest score first) until `context_token_budget` exhausted.
+5. Selected chunks re-sorted by `(doc_id, chunk_index)` to restore reading order.
+
+### Stage 3 — Generate
+`RAGService.generate(request)` injects the assembled context into a grounded system
+prompt and calls `AIService.chat()` with `RAG_MODEL = gpt-4o-mini` at `RAG_TEMPERATURE = 0.2`.
+The prompt instructs the model to cite sources and admit gaps rather than guess.
+
+**Model rationale**: `gpt-4o-mini` for RAG because the task is constrained summarisation
+(not tool-calling), quality on our FAQ dataset is within 3% of `gpt-4o` (ROUGE-L,
+citation accuracy), and cost is ~10× lower per output token.
+
+---
+
+## ConversationRepository (Optional Persistence)
+
+`app/repositories/conversation.py` contains `ConversationRepository` and
+`MessageRepository` — ready-to-use but **not yet wired into the agent**.
+
+The agent is currently **stateless** (history owned by client). To add server-side
+persistence, inject `ConversationRepository` via `deps.py` and call
+`msg_repo.append(conversation_id, role, content, tokens, model)` after each
+`_execute_tool` call in `AgentService.run`. The `# ── HITL hook point` comment
+marks the exact insertion point — no interface changes needed.
 
 ---
 

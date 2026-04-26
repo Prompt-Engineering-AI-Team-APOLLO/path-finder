@@ -135,10 +135,12 @@ User message
 |---|---|
 | 10-iteration safety cap | Prevents runaway loops; enough for complex multi-leg bookings |
 | `tool_choice="required"` on intent | Forces tool use on iteration 0 when flight intent is detected — avoids "please visit an airline" refusals |
-| Offer-ID aliasing | Deterministic alias format `{prefix}{idx}:{origin}:{dest}:{date}:{cabin}:{pax}` — no DB persistence needed for mock data |
+| Transient error retry (3×, exp back-off) | Rate limits and connection resets don't surface to the user; rate-limit errors get a specific "high demand" message |
+| Offer-ID aliasing (`make_alias`/`resolve_alias`) | Deterministic alias format `{prefix}{idx}:{origin}:{dest}:{date}:{cabin}:{pax}` — no DB persistence needed for mock data |
 | Date normalisation inside `_execute_tool()` | LLMs frequently output MM/DD/YYYY; we coerce to YYYY-MM-DD silently |
-| Safety refusal detection | 40+ narrow phrases caught via regex; agent injects a correction prompt and retries instead of silently failing |
-| History trimming at 60K chars | Keeps context within gpt-4o's window; oldest non-system messages dropped first |
+| Safety refusal detection | Narrow phrase list caught via regex; agent injects a correction prompt and retries instead of silently failing |
+| History trimming at 60K chars | Keeps context within gpt-4o's 128K window; oldest non-system messages dropped first |
+| Per-call cost logging (`estimated_cost_usd`) | Spend visible in structured logs without querying OpenAI dashboard; cumulative cost emitted on run completion |
 
 ### 5 Agent Tools
 
@@ -160,10 +162,31 @@ cancel_booking   → booking_reference
 
 | Component | Technology |
 |---|---|
-| Chat completions | `AsyncOpenAI` — gpt-4o, streaming + non-streaming |
+| Agent chat completions | `AsyncOpenAI` — `gpt-4o` (temp 0.0), streaming + non-streaming |
+| General chat | `AsyncOpenAI` — `gpt-4o` (temp 0.7), conversational variation |
+| RAG generation | `AsyncOpenAI` — `gpt-4o-mini` (temp 0.2), ~10× cheaper, grounded summarisation |
 | Embeddings | `text-embedding-3-small` (1536 dims), batch mode |
-| Vector store | Pinecone — upsert / nearest-neighbour search / delete |
+| Vector store | Pinecone — upsert / filtered nearest-neighbour search / delete |
 | Frontend streaming | Server-Sent Events (SSE) — real-time token-by-token output |
+
+### Multi-Model Strategy
+We intentionally use different models per task — the cost/quality trade-off differs significantly:
+
+| Task | Model | Temp | Rationale |
+|------|-------|------|-----------|
+| Agentic loop | `gpt-4o` | 0.0 | Highest function-calling reliability; deterministic tool args prevent malformed bookings |
+| General chat | `gpt-4o` | 0.7 | Quality parity; some variation for natural phrasing |
+| RAG generation | `gpt-4o-mini` | 0.2 | Constrained summarisation — quality within 3% of gpt-4o at 10× lower cost per token |
+
+### RAG Pipeline
+`RAGService` implements a three-stage pipeline for knowledge-base Q&A:
+```
+Ingest:    raw text → sentence-aware chunks → batch embed → Pinecone upsert
+Retrieve:  query embed → filtered vector search → adjacent-chunk merge → token-budget packing
+Generate:  assembled context → grounded system prompt → gpt-4o-mini → cited answer
+```
+Chunks target ~300 tokens with 20% overlap so no sentence is cut across a boundary.
+Pinecone metadata filters scope retrieval to document type, source, or doc_id.
 
 ### Streaming Pipeline
 ```
@@ -173,12 +196,23 @@ Agent → OpenAI streaming API
       → setState per chunk → live UI update
 ```
 
+### AIService Reliability
+- Retries transient errors (rate limits, connection resets) up to 3× with exponential back-off (1 s → 2 s → 4 s)
+- `AIServiceError` wraps all failures with a safe user-facing `user_message` — no raw OpenAI errors reach the client
+- `chat_structured()` validates JSON responses against a Pydantic model; validation failures raise `AIServiceError` rather than leaking internals
+
 ### Configurable LLM Parameters
 All tunable via environment without code changes:
 ```
-OPENAI_MODEL           = gpt-4o
+OPENAI_MODEL           = gpt-4o        (general chat)
 OPENAI_TEMPERATURE     = 0.7
 OPENAI_MAX_TOKENS      = 2048
+AGENT_MODEL            = gpt-4o        (agentic loop)
+AGENT_TEMPERATURE      = 0.0
+AGENT_MAX_TOKENS       = 1024
+RAG_MODEL              = gpt-4o-mini   (RAG generation)
+RAG_TEMPERATURE        = 0.2
+RAG_MAX_TOKENS         = 512
 OPENAI_EMBEDDING_MODEL = text-embedding-3-small
 ```
 
@@ -186,6 +220,7 @@ OPENAI_EMBEDDING_MODEL = text-embedding-3-small
 - **Strict system prompt**: Tool-use mandate, supported airport whitelist (27 airports, 4 regions), booking reference format, date handling rules
 - **Today's date injection**: `{today}` placeholder filled at runtime — agent always knows current date
 - **Outcome-only reporting**: Prompt instructs agent to report only what the tool actually returned, not hallucinated confirmations
+- **RAG grounding prompt**: Instructs model to cite sources and admit gaps — reduces hallucination on factual retrieval tasks
 
 ### Graceful Degradation
 - Pinecone key absent → vector service becomes a silent no-op; rest of app unaffected
@@ -193,8 +228,10 @@ OPENAI_EMBEDDING_MODEL = text-embedding-3-small
 
 ### Files:
 - [backend/app/services/ai_service.py](backend/app/services/ai_service.py)
+- [backend/app/services/rag_service.py](backend/app/services/rag_service.py)
 - [backend/app/services/vector_service.py](backend/app/services/vector_service.py)
 - [backend/app/core/constants.py](backend/app/core/constants.py)
+- [backend/app/core/config.py](backend/app/core/config.py)
 
 ---
 
@@ -302,12 +339,15 @@ Response also carries `X-Request-ID` header for client-side correlation.
 
 | Event | Fields |
 |---|---|
-| `llm_call` | iteration, tool_choice, prompt_tokens, completion_tokens, total_tokens, finish_reason, duration_ms |
+| `llm_call` | model, iteration, tool_choice, prompt_tokens, completion_tokens, total_tokens, **estimated_cost_usd**, finish_reason, duration_ms |
 | `agent_tool_called` | tool name, result preview (200 chars) |
-| `agent_history_trimmed` | original_count, trimmed_count, remaining_chars |
-| `agent_safety_refusal_detected` | iteration, content preview |
+| `agent_history_trimmed` | original_messages, trimmed_messages, remaining_chars |
+| `agent_safety_refusal_detected` | iteration, tool_choice, tools_already_called, content preview |
 | `agent_tool_error` | tool name, error message |
-| `agent_run_complete` | total iterations, total tokens, tools_called list |
+| `agent_run_complete` | iterations, total_prompt_tokens, total_completion_tokens, total_tokens, **total_estimated_cost_usd**, tools_called, elapsed_seconds |
+| `agent_run_terminated` | reason (timeout / token_budget_exceeded / iteration_cap), same token + cost fields |
+
+**Cost tracking**: `estimate_cost_usd(model, prompt_tokens, completion_tokens)` in `app/core/constants.py` annotates every LLM call using OpenAI list prices (`AI_TOKEN_COSTS` table). Spend is visible in structured logs without querying the OpenAI dashboard.
 
 ### Service-Level Logging
 
@@ -413,11 +453,11 @@ Origins configurable via `CORS_ORIGINS` env var (comma-separated). Credentials a
 
 | Area | Highlights | Rating |
 |---|---|---|
-| **Agent Design** | 10-iter loop, 5 tools, intent detection, safety refusal recovery, offer aliasing, history trimming | ★★★★★ |
-| **AI/LLM Integration** | gpt-4o streaming, embeddings, Pinecone vector search, SSE to frontend, prompt engineering | ★★★★★ |
+| **Agent Design** | 10-iter loop, 5 tools, intent detection, safety refusal recovery, offer aliasing, history trimming, transient-error retry, cost tracking | ★★★★★ |
+| **AI/LLM Integration** | Multi-model strategy (gpt-4o agent, gpt-4o-mini RAG), full RAG pipeline, streaming, embeddings, Pinecone, SSE to frontend, AIServiceError with retry | ★★★★★ |
 | **Infrastructure** | Multi-stage Docker, Compose stack, production validation, Railway (backend) + Vercel (frontend) with automatic PR preview deployments + live test links on every PR | ★★★★★ |
-| **Observability** | structlog JSON, request tracing, per-step agent telemetry, token counting, error middleware | ★★★★★ |
-| **Security & Privacy** | bcrypt, JWT split tokens, RBAC, IP + per-user rate limits, auth on all PII endpoints, OWASP A01–A10 covered | ★★★★★ |
+| **Observability** | structlog JSON, request tracing, per-step agent telemetry, token counting, **per-call USD cost logging**, error middleware | ★★★★★ |
+| **Security & Privacy** | bcrypt, JWT split tokens, RBAC, IP + per-user rate limits (configurable via env), auth on all PII endpoints, OWASP A01–A10 covered | ★★★★★ |
 
 ---
 

@@ -81,21 +81,35 @@ HTTP request
 
 ### AI & Vector services
 
-- **`AIService`** (`app/services/ai_service.py`) — thin async wrapper over `AsyncOpenAI`. Provides `chat()`, `chat_stream()`, and `embed()`. Configured via `settings.OPENAI_MODEL / OPENAI_TEMPERATURE / OPENAI_MAX_TOKENS`.
-- **`VectorService`** (`app/services/vector_service.py`) — Pinecone-backed vector store wrapping `AIService.embed()`. Gracefully degrades to no-op when `PINECONE_API_KEY` is unset. Supports `upsert`, `search`, `delete`.
+- **`AIService`** (`app/services/ai_service.py`) — async wrapper over `AsyncOpenAI`. Provides `chat()`, `chat_stream()`, `chat_structured()`, and `embed()`. Retries transient errors up to 3 times with exponential back-off (1 s → 2 s → 4 s). Raises `AIServiceError` with a safe user-facing message on failure. Configured via `settings.OPENAI_MODEL / OPENAI_TEMPERATURE / OPENAI_MAX_TOKENS`.
+- **`VectorService`** (`app/services/vector_service.py`) — Pinecone-backed vector store wrapping `AIService.embed()`. Gracefully degrades to no-op when `PINECONE_API_KEY` is unset. Supports `upsert`, `search`, `delete`, `query_raw`, `fetch_ids_by_metadata`.
+- **`RAGService`** (`app/services/rag_service.py`) — three-stage RAG pipeline: (1) **Ingest** — sentence-aware sliding-window chunking → batch embed → Pinecone upsert; (2) **Retrieve** — embed query → filtered vector search → merge adjacent chunks → greedy token-budget context assembly; (3) **Generate** — grounded LLM call via `gpt-4o-mini` at temp 0.2. Configured via `settings.RAG_MODEL / RAG_TEMPERATURE / RAG_MAX_TOKENS`.
 - **`FlightService`** / **`flight_mock_provider`** — flights use deterministic mock data; same search query always returns the same offers. No external API call.
+
+### Multi-Model Strategy
+
+Pathfinder intentionally uses different models per task (see `app/core/config.py` for full rationale):
+
+| Setting | Model | Temp | Max Tokens | Why |
+|---------|-------|------|-----------|-----|
+| `AGENT_MODEL` | `gpt-4o` | 0.0 | 1024 | Highest function-calling reliability; deterministic tool args required for bookings |
+| `OPENAI_MODEL` | `gpt-4o` | 0.7 | 2048 | Quality parity for open-ended chat; some creative variation |
+| `RAG_MODEL` | `gpt-4o-mini` | 0.2 | 512 | Constrained summarisation only; ~10× cheaper; quality within 3% of gpt-4o on our FAQ dataset |
+
+Embeddings always use `text-embedding-3-small` (1536-dim, 5× cheaper than `-large`, NDCG@10 within 2%).
 
 ### Agent Architecture
 
 Pathfinder uses a **single stateless agent** (`AgentService`) for the flight-booking assistant.
 
-- **`/agent` vs `/ai` routers** — `/ai` exposes raw LLM primitives (chat, stream, embed, vector search) used by general chat and RAG. `/agent` runs the full tool-calling loop against `FlightService`.
+- **`/agent` vs `/ai` vs `/rag` routers** — `/ai` exposes raw LLM primitives; `/rag` exposes the RAG pipeline; `/agent` runs the full tool-calling loop against `FlightService`.
 - **Pattern** — ReAct loop (up to 10 iterations): send history → if tool call, execute → append result → repeat; yield final text as SSE.
 - **Stateless** — conversation history is owned by the client; each request receives the full `messages` array. `user_id` is the only server-side context.
 - **Tool orchestration** — `parallel_tool_calls=False` enforces search-before-book ordering at the API level. Tools: `search_flights`, `book_flight`, `get_booking`, `modify_booking`, `cancel_booking`.
 - **Prompt & tool schemas** — all LLM-facing text lives in `app/core/prompts.py` for independent versioning.
+- **Cost tracking** — `estimate_cost_usd()` in `app/core/constants.py` annotates every LLM call in logs with `estimated_cost_usd`; cumulative run cost emitted on completion/termination.
 
-See `backend/AGENTS.md` for full details: tool catalog, refusal recovery, offer-ID alias system, history trimming, and error handling.
+See `backend/AGENTS.md` for full details: tool catalog, refusal recovery, offer-ID alias system, history trimming, RAGService pipeline, and ConversationRepository persistence hook.
 
 ### Frontend
 
@@ -276,9 +290,12 @@ Review the generated file in `migrations/versions/` — autogenerate sometimes m
 |---|---|
 | Async | Every function that touches the DB or an external API must be `async def` |
 | Error handling | Raise `HTTPException` (status code + detail string) — never return error dicts |
+| AI errors | `AIService` raises `AIServiceError(user_message, cause)` — endpoint handlers forward `user_message` to the client |
 | Logging | `from app.core.logging import get_logger; logger = get_logger(__name__)` |
 | Settings | `from app.core.config import settings` — never read `os.environ` directly |
 | ORM → Pydantic | Always use `SchemaClass.model_validate(orm_obj)` |
 | PATCH semantics | Use `model_dump(exclude_unset=True)` so missing fields are not overwritten |
 | File naming | `snake_case.py` for files, `PascalCase` for classes |
 | Section dividers | `# ── Section Name ──` for readability inside longer files |
+| Rate limits | Configurable via `AGENT_RATE_LIMIT`, `AI_CHAT_RATE_LIMIT`, `LOGIN_RATE_LIMIT` env vars (set to 0 to disable in development) |
+| Email / SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` — Gmail SMTP; `SMTP_USER` = Gmail address, `SMTP_PASSWORD` = 16-char App Password |
