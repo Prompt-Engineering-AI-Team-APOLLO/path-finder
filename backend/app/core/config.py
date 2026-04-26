@@ -27,7 +27,11 @@ class Settings(BaseSettings):
 
     # ── Security ──────────────────────────────────────────────────────────────
     SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
+<<<<<<< HEAD
     ALGORITHM: str = "HS256"
+=======
+    ALGORITHM: Literal["HS256", "RS256"] = "HS256"
+>>>>>>> origin/main
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
@@ -46,6 +50,13 @@ class Settings(BaseSettings):
     DATABASE_ECHO: bool = False
     # Set to true when connecting to Supabase or any remote Postgres that requires SSL
     DATABASE_SSL: bool = False
+<<<<<<< HEAD
+=======
+    # Base64-encoded CA cert (preferred for cloud deployments like Railway/Render)
+    DATABASE_SSL_CA_CERT_B64: str = ""
+    # Path to a CA cert file (for local/Docker use)
+    DATABASE_SSL_CA_CERT: str = ""
+>>>>>>> origin/main
     # Set to true when connecting through pgBouncer (e.g. Supabase Transaction Pooler port 6543)
     # Disables asyncpg's prepared statement cache, which is incompatible with transaction mode
     DATABASE_PGBOUNCER: bool = False
@@ -57,11 +68,14 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = 2048
     OPENAI_TEMPERATURE: float = 0.7
 
+<<<<<<< HEAD
     # ── Groq (agent) ──────────────────────────────────────────────────────────
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
+=======
+>>>>>>> origin/main
     # ── Vector DB (Pinecone) ──────────────────────────────────────────────────
     PINECONE_API_KEY: str = ""
     PINECONE_ENVIRONMENT: str = ""
@@ -76,6 +90,15 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: Literal["json", "text"] = "json"
 
+<<<<<<< HEAD
+=======
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+    # Set to 0 to disable rate limiting entirely (useful in development)
+    AGENT_RATE_LIMIT: int = 15    # requests per minute per user
+    AI_CHAT_RATE_LIMIT: int = 30  # requests per minute per user
+    LOGIN_RATE_LIMIT: int = 10    # login attempts per minute per IP
+
+>>>>>>> origin/main
     # ── Google OAuth ──────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
 

@@ -6,6 +6,8 @@ from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import AIServiceDep, CurrentUser, VectorServiceDep
+from app.core.config import settings
+from app.core.rate_limit import enforce_rate_limit
 from app.schemas.ai import (
     ChatRequest,
     ChatResponse,
@@ -17,6 +19,8 @@ from app.schemas.ai import (
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
+_CHAT_RATE_WINDOW = 60
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
@@ -26,6 +30,7 @@ async def chat(
     background_tasks: BackgroundTasks,
 ) -> ChatResponse:
     """Send messages and get an AI response (non-streaming)."""
+    await enforce_rate_limit(f"ai_chat:{current_user.id}", settings.AI_CHAT_RATE_LIMIT, _CHAT_RATE_WINDOW)
     content, tokens = await ai_svc.chat(
         messages=data.messages,
         temperature=data.temperature,
@@ -53,6 +58,7 @@ async def chat_stream(
     ai_svc: AIServiceDep,
 ) -> StreamingResponse:
     """Stream AI response chunks via Server-Sent Events."""
+    await enforce_rate_limit(f"ai_chat:{current_user.id}", settings.AI_CHAT_RATE_LIMIT, _CHAT_RATE_WINDOW)
 
     async def event_stream():
         async for chunk in ai_svc.chat_stream(

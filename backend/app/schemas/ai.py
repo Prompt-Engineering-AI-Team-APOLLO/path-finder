@@ -1,11 +1,19 @@
 import uuid
 
+<<<<<<< HEAD
 from pydantic import BaseModel, Field
+=======
+from pydantic import BaseModel, Field, model_validator
+>>>>>>> origin/main
 
 
 class ChatMessage(BaseModel):
     role: str = Field(pattern=r"^(user|assistant|system)$")
+<<<<<<< HEAD
     content: str = Field(min_length=1, max_length=32_000)
+=======
+    content: str = Field(min_length=0, max_length=32_000)
+>>>>>>> origin/main
 
 
 class ChatRequest(BaseModel):
@@ -15,6 +23,17 @@ class ChatRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=16_000)
 
+<<<<<<< HEAD
+=======
+    @model_validator(mode="after")
+    def drop_empty_content_messages(self) -> "ChatRequest":
+        """Strip assistant turns with empty content (tool-calling turns from the
+        OpenAI API have content='' or content=null and are not useful when
+        replayed as conversation history)."""
+        self.messages = [m for m in self.messages if m.content.strip()]
+        return self
+
+>>>>>>> origin/main
 
 class ChatResponse(BaseModel):
     content: str

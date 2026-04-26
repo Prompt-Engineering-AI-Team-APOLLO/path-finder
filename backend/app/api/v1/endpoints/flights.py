@@ -13,7 +13,7 @@ DELETE /api/v1/flights/bookings/{ref}        → cancel a booking        (auth r
 
 from fastapi import APIRouter, status
 
-from app.api.deps import CurrentUser, FlightServiceDep
+from app.api.deps import CurrentUser, FlightServiceDep, OptionalUser
 from app.schemas.flight import (
     BookingCancelResponse,
     BookingModifyRequest,
@@ -77,8 +77,9 @@ async def list_routes() -> list[dict]:
 async def book_flight(
     req: FlightBookRequest,
     svc: FlightServiceDep,
+    user: OptionalUser,
 ) -> BookingRead:
-    booking = await svc.book_flight(req)
+    booking = await svc.book_flight(req, user.id if user else None)
     return BookingRead.model_validate(booking)
 
 
@@ -90,8 +91,9 @@ async def book_flight(
 )
 async def list_my_bookings(
     svc: FlightServiceDep,
+    user: CurrentUser,
 ) -> list[BookingRead]:
-    bookings = await svc.list_my_bookings()
+    bookings = await svc.list_my_bookings(user.id)
     return [BookingRead.model_validate(b) for b in bookings]
 
 
@@ -101,13 +103,13 @@ async def list_my_bookings(
     summary="Look up a booking",
     description=(
         "Retrieve full booking details by reference number (e.g. `PF-A1B2C3`). "
-        "This endpoint is public — no authentication required — so passengers can "
-        "look up their booking without logging in."
+        "Authentication required."
     ),
 )
 async def get_booking(
     booking_reference: str,
     svc: FlightServiceDep,
+    _: CurrentUser,
 ) -> BookingRead:
     booking = await svc.get_booking(booking_reference)
     return BookingRead.model_validate(booking)
