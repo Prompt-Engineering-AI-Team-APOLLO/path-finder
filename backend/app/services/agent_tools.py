@@ -131,20 +131,34 @@ def resolve_alias(alias: str) -> str | None:
 
     parts = alias.split(":")
     if len(parts) != 6:
+        logger.debug("resolve_alias_bad_format", alias=alias[:80], parts=len(parts))
         return None
     prefix_idx, origin, destination, dep_date_str, cabin, pax_str = parts
     try:
         passengers = int(pax_str)
         dep_date = _date.fromisoformat(dep_date_str)
-    except ValueError:
+    except ValueError as exc:
+        logger.debug("resolve_alias_parse_error", alias=alias[:80], error=str(exc))
         return None
     try:
         result_index = int(prefix_idx[1:]) - 1   # 1-based → 0-based
-    except (ValueError, IndexError):
+    except (ValueError, IndexError) as exc:
+        logger.debug("resolve_alias_index_error", alias=alias[:80], prefix=prefix_idx, error=str(exc))
         return None
 
-    offers = _mock.search(origin, destination, dep_date, passengers, cabin)
+    try:
+        offers = _mock.search(origin, destination, dep_date, passengers, cabin)
+    except Exception as exc:
+        logger.warning("resolve_alias_search_error", alias=alias[:80], error=str(exc))
+        return None
+
     if not offers or result_index >= len(offers):
+        logger.debug(
+            "resolve_alias_out_of_range",
+            alias=alias[:80],
+            result_index=result_index,
+            offers_count=len(offers),
+        )
         return None
     return offers[result_index].offer_id
 
@@ -199,6 +213,12 @@ async def handle_search_flights(args: dict, ctx: ToolContext) -> str:
 
 async def handle_book_flight(args: dict, ctx: ToolContext) -> str:
     """Book a flight using offer IDs from a previous search."""
+    # Log raw offer IDs before resolution so we can debug alias failures.
+    logger.info(
+        "book_flight_raw_offer_ids",
+        outbound_offer_id=(args.get("outbound_offer_id") or "")[:80],
+        return_offer_id=(args.get("return_offer_id") or "")[:80],
+    )
     # Resolve self-contained aliases → full base64 offer_ids
     for field in ("outbound_offer_id", "return_offer_id"):
         alias = args.get(field)
@@ -206,6 +226,24 @@ async def handle_book_flight(args: dict, ctx: ToolContext) -> str:
             resolved = resolve_alias(alias)
             if resolved:
                 args[field] = resolved
+            else:
+                logger.warning(
+                    "offer_alias_unresolvable",
+                    field=field,
+                    alias=alias[:80],
+                )
+                # Alias could not be resolved — guard before decode_offer fails.
+                # Tell the agent to search again so it gets fresh, valid offer IDs.
+                return json.dumps({
+                    "status": "FAILED",
+                    "error": f"The {field} '{alias}' could not be resolved to a bookable offer.",
+                    "instruction": (
+                        "Call search_flights again to get fresh offer IDs, then retry book_flight "
+                        "using an offer_id from that search result. Do NOT invent or reuse a "
+                        "previous offer_id — always use the exact offer_id from the most recent "
+                        "search_flights result."
+                    ),
+                })
 
     _strip_null_fields(args, ("return_offer_id", "contact_phone"))
 
