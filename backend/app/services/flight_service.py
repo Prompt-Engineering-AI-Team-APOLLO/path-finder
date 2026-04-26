@@ -25,17 +25,11 @@ from app.schemas.flight import (
     FlightSearchRequest,
     FlightSearchResponse,
 )
-<<<<<<< HEAD
-from app.services import flight_mock_provider as mock
-from app.services.email_service import EmailService
-
-=======
 from app.core.logging import get_logger
 from app.services import flight_mock_provider as mock
 from app.services.email_service import EmailService
 
 logger = get_logger(__name__)
->>>>>>> origin/main
 _email = EmailService()
 
 
@@ -85,8 +79,6 @@ class FlightService:
             )
 
         search_id = secrets.token_hex(8)
-<<<<<<< HEAD
-=======
         logger.info(
             "flight_search",
             origin=req.origin,
@@ -99,7 +91,6 @@ class FlightService:
             return_count=len(return_flights) if return_flights else 0,
             search_id=search_id,
         )
->>>>>>> origin/main
         return FlightSearchResponse(
             search_id=search_id,
             origin=req.origin,
@@ -187,8 +178,6 @@ class FlightService:
         )
         booking = await self._repo.create(booking)
         await self._session.commit()
-<<<<<<< HEAD
-=======
         logger.info(
             "booking_created",
             booking_reference=booking.booking_reference,
@@ -201,7 +190,6 @@ class FlightService:
             destination=booking.outbound_destination,
             round_trip=booking.return_flight_number is not None,
         )
->>>>>>> origin/main
         await _email.send_booking_notification(booking, "confirmed")
         return booking
 
@@ -211,27 +199,16 @@ class FlightService:
         """Fetch a booking by reference.  Public — no ownership check."""
         booking = await self._repo.get_by_reference(reference)
         if not booking:
-<<<<<<< HEAD
-=======
             logger.warning("booking_not_found", booking_reference=reference)
->>>>>>> origin/main
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Booking {reference!r} not found",
             )
         return booking
 
-<<<<<<< HEAD
-    async def list_my_bookings(self, user_id: uuid.UUID | None = None) -> list[FlightBooking]:
-        """Return bookings for a user, or all bookings when no user_id is given."""
-        if user_id is not None:
-            return await self._repo.get_by_user_id(user_id)
-        return await self._repo.get_all()
-=======
     async def list_my_bookings(self, user_id: uuid.UUID) -> list[FlightBooking]:
         """Return bookings belonging to the given user."""
         return await self._repo.get_by_user_id(user_id)
->>>>>>> origin/main
 
     # ── Modify ────────────────────────────────────────────────────────────────
 
@@ -352,8 +329,6 @@ class FlightService:
         updates["status"] = "modified"
         result = await self._repo.update(booking, updates)
         await self._session.commit()
-<<<<<<< HEAD
-=======
         logger.info(
             "booking_modified",
             booking_reference=reference,
@@ -361,7 +336,6 @@ class FlightService:
             changed_fields=[k for k in updates if k != "status"],
             new_total_price=updates.get("total_price"),
         )
->>>>>>> origin/main
         await _email.send_booking_notification(result, "modified")
         return result
 
@@ -374,14 +348,11 @@ class FlightService:
         booking = await self._require_owned_active_booking(reference, user_id)
         await self._repo.update(booking, {"status": "cancelled"})
         await self._session.commit()
-<<<<<<< HEAD
-=======
         logger.info(
             "booking_cancelled",
             booking_reference=reference,
             user_id=str(user_id) if user_id else None,
         )
->>>>>>> origin/main
         await _email.send_booking_notification(booking, "cancelled")
         return BookingCancelResponse(
             booking_reference=reference,

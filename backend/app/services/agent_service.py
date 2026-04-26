@@ -1,23 +1,14 @@
 """AgentService — agentic loop that gives the LLM tools to search and book flights.
 
-<<<<<<< HEAD
-Uses Groq's OpenAI-compatible API (llama-3.3-70b-versatile) with function calling.
-The loop:
-  1. Send conversation + tool definitions to Groq
-=======
 Uses OpenAI's API (gpt-4o) with function calling.
 The loop:
   1. Send conversation + tool definitions to OpenAI
->>>>>>> origin/main
   2. If the model calls a tool → execute it via FlightService, append result, repeat
   3. When the model stops calling tools → stream the final text response
 """
 
 import json
-<<<<<<< HEAD
-=======
 import time
->>>>>>> origin/main
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -359,11 +350,7 @@ def _needs_tool(history: list[dict]) -> bool:
 
 # ── Safety-refusal detection — secondary safety net ───────────────────────────
 # Even with tool_choice="required" the model occasionally emits a refusal
-<<<<<<< HEAD
-# text block instead of a tool call (Groq/Llama bug). These phrases catch that.
-=======
 # text block instead of a tool call. These phrases catch that.
->>>>>>> origin/main
 #
 # IMPORTANT: Only include phrases that are UNAMBIGUOUSLY a tool-use refusal.
 # False positives cause an infinite detect→force→detect loop that burns all
@@ -433,8 +420,6 @@ def _is_safety_refusal(text: str) -> bool:
     )
 
 
-<<<<<<< HEAD
-=======
 # ── History management ────────────────────────────────────────────────────────
 
 # ~15K tokens at 4 chars/token — keeps costs bounded while preserving enough
@@ -469,7 +454,6 @@ def _trim_history(history: list[dict]) -> list[dict]:
     return [system] + rest
 
 
->>>>>>> origin/main
 # ── Service ───────────────────────────────────────────────────────────────────
 
 class AgentService:
@@ -508,28 +492,16 @@ class AgentService:
         # the first call and prevent safety refusals entirely.
         force_tool_next = _needs_tool(history)
 
-<<<<<<< HEAD
-=======
         # ── Per-run accumulators for observability ────────────────────────────
         _total_prompt_tokens = 0
         _total_completion_tokens = 0
         _tools_called: list[str] = []
 
->>>>>>> origin/main
         # ── Tool-calling loop (non-streaming) ─────────────────────────────────
         for iteration in range(10):  # safety cap — prevent infinite loops
             tool_choice = "required" if force_tool_next else "auto"
             force_tool_next = False  # reset; only set again if refusal detected
 
-<<<<<<< HEAD
-            # Groq's llama models occasionally emit function calls in the old
-            # XML format (<function=name>…</function>) instead of JSON, causing
-            # a 400 tool_use_failed error. Retrying usually produces well-formed
-            # JSON on the next attempt.
-            response = None
-            for attempt in range(3):
-                try:
-=======
             history = _trim_history(history)
 
             # Retry up to 3 times on transient API errors to improve resilience.
@@ -538,7 +510,6 @@ class AgentService:
             for attempt in range(3):
                 try:
                     _t0 = time.perf_counter()
->>>>>>> origin/main
                     response = await self._client.chat.completions.create(
                         model=settings.OPENAI_MODEL,
                         messages=history,  # type: ignore[arg-type]
@@ -547,10 +518,7 @@ class AgentService:
                         parallel_tool_calls=False,
                         max_tokens=2048,
                     )
-<<<<<<< HEAD
-=======
                     _llm_ms = round((time.perf_counter() - _t0) * 1000, 2)
->>>>>>> origin/main
                     break
                 except Exception as e:
                     err = str(e)
@@ -570,8 +538,6 @@ class AgentService:
                 yield "Sorry, I couldn't process that request after several attempts. Please try again."
                 return
 
-<<<<<<< HEAD
-=======
             _usage = response.usage
             logger.info(
                 "llm_call",
@@ -588,7 +554,6 @@ class AgentService:
                 _total_prompt_tokens += _usage.prompt_tokens
                 _total_completion_tokens += _usage.completion_tokens
 
->>>>>>> origin/main
             msg = response.choices[0].message
 
             # ── No tool calls: either a final answer or a safety refusal ──────
@@ -642,8 +607,6 @@ class AgentService:
                     continue
 
                 # Legitimate final response — yield and finish
-<<<<<<< HEAD
-=======
                 logger.info(
                     "agent_run_complete",
                     iterations=iteration + 1,
@@ -652,7 +615,6 @@ class AgentService:
                     total_tokens=_total_prompt_tokens + _total_completion_tokens,
                     tools_called=_tools_called,
                 )
->>>>>>> origin/main
                 if content:
                     yield content
                 else:
@@ -679,10 +641,7 @@ class AgentService:
 
             for tc in msg.tool_calls:
                 result = await self._execute_tool(tc.function.name, tc.function.arguments, user_id)
-<<<<<<< HEAD
-=======
                 _tools_called.append(tc.function.name)
->>>>>>> origin/main
                 logger.info("agent_tool_called", tool=tc.function.name, result=result[:200])
                 history.append({
                     "role": "tool",
@@ -691,8 +650,6 @@ class AgentService:
                 })
 
         # Fallback if loop cap hit
-<<<<<<< HEAD
-=======
         logger.warning(
             "agent_run_complete",
             iterations=10,
@@ -702,7 +659,6 @@ class AgentService:
             tools_called=_tools_called,
             status="loop_cap_hit",
         )
->>>>>>> origin/main
         yield "I ran into trouble completing that request. Please try again."
 
     async def _stream_final(

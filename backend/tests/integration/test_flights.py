@@ -320,13 +320,8 @@ async def test_book_round_trip(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-<<<<<<< HEAD
-async def test_book_requires_authentication(client: AsyncClient):
-    """Booking without a token returns 403."""
-=======
 async def test_book_anonymous_allowed(client: AsyncClient):
     """Booking without a token is allowed (OptionalUser) — returns 201 with no user_id attached."""
->>>>>>> origin/main
     resp = await client.post(
         "/api/v1/flights/bookings",
         json={
@@ -335,11 +330,7 @@ async def test_book_anonymous_allowed(client: AsyncClient):
             "contact_email": "anon@example.com",
         },
     )
-<<<<<<< HEAD
-    assert resp.status_code == 403
-=======
     assert resp.status_code == 201
->>>>>>> origin/main
 
 
 @pytest.mark.asyncio
@@ -438,13 +429,8 @@ async def test_lookup_booking_public(client: AsyncClient):
     )
     ref = book_resp.json()["booking_reference"]
 
-<<<<<<< HEAD
-    # Look up WITHOUT auth header
-    resp = await client.get(f"/api/v1/flights/bookings/{ref}")
-=======
     # Look up with auth header (authentication now required)
     resp = await client.get(f"/api/v1/flights/bookings/{ref}", headers=_auth(token))
->>>>>>> origin/main
     assert resp.status_code == 200
     body = resp.json()
     assert body["booking_reference"] == ref
@@ -453,13 +439,9 @@ async def test_lookup_booking_public(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_lookup_nonexistent_booking_returns_404(client: AsyncClient):
-<<<<<<< HEAD
-    resp = await client.get("/api/v1/flights/bookings/PF-ZZZZZZ")
-=======
     user = {**_USER, "email": "notfound@example.com"}
     token = await _register_and_login(client, user)
     resp = await client.get("/api/v1/flights/bookings/PF-ZZZZZZ", headers=_auth(token))
->>>>>>> origin/main
     assert resp.status_code == 404
 
 
@@ -704,13 +686,8 @@ async def test_cancel_booking(client: AsyncClient):
     assert body["status"] == "cancelled"
     assert "successfully" in body["message"].lower()
 
-<<<<<<< HEAD
-    # Confirm status persisted — lookup still works
-    lookup = await client.get(f"/api/v1/flights/bookings/{ref}")
-=======
     # Confirm status persisted — lookup requires auth
     lookup = await client.get(f"/api/v1/flights/bookings/{ref}", headers=_auth(token))
->>>>>>> origin/main
     assert lookup.json()["status"] == "cancelled"
 
 
@@ -961,13 +938,8 @@ async def test_full_booking_journey(client: AsyncClient):
     assert mod_resp.json()["total_price"] > economy_price
     assert mod_resp.json()["status"] == "modified"
 
-<<<<<<< HEAD
-    # 4. Public lookup
-    lookup_resp = await client.get(f"/api/v1/flights/bookings/{ref}")
-=======
     # 4. Authenticated lookup (auth now required)
     lookup_resp = await client.get(f"/api/v1/flights/bookings/{ref}", headers=headers)
->>>>>>> origin/main
     assert lookup_resp.status_code == 200
     assert lookup_resp.json()["cabin_class"] == "business"
 
@@ -978,11 +950,6 @@ async def test_full_booking_journey(client: AsyncClient):
     assert cancel_resp.status_code == 200
     assert cancel_resp.json()["status"] == "cancelled"
 
-<<<<<<< HEAD
-    # 6. Lookup post-cancel
-    final = await client.get(f"/api/v1/flights/bookings/{ref}")
-=======
     # 6. Lookup post-cancel — auth required
     final = await client.get(f"/api/v1/flights/bookings/{ref}", headers=headers)
->>>>>>> origin/main
     assert final.json()["status"] == "cancelled"

@@ -50,16 +50,7 @@ AIRPORT_CITIES: dict[str, str] = {
     "AUH": "Abu Dhabi",
     "DOH": "Doha",
     # Asia Pacific
-<<<<<<< HEAD
-    "HND": "Tokyo",
     "NRT": "Tokyo",
-    "KIX": "Osaka",
-    "ITM": "Osaka",
-    "FUK": "Fukuoka",
-    "CTS": "Sapporo",
-=======
-    "NRT": "Tokyo",
->>>>>>> origin/main
     "HKG": "Hong Kong",
     "SIN": "Singapore",
     "SYD": "Sydney",
@@ -152,21 +143,6 @@ ROUTES: dict[tuple[str, str], tuple[int, float]] = {
     ("SIN", "LHR"): (800, 720),
     ("LAX", "NRT"): (630, 700),
     ("NRT", "LAX"): (660, 700),
-<<<<<<< HEAD
-    ("DFW", "HND"): (820, 760),
-    ("HND", "DFW"): (700, 760),
-    ("DFW", "NRT"): (800, 740),
-    ("NRT", "DFW"): (680, 740),
-    ("DFW", "KIX"): (790, 720),
-    ("KIX", "DFW"): (670, 720),
-    ("DFW", "ITM"): (805, 730),
-    ("ITM", "DFW"): (685, 730),
-    ("DFW", "FUK"): (830, 710),
-    ("FUK", "DFW"): (705, 710),
-    ("DFW", "CTS"): (860, 750),
-    ("CTS", "DFW"): (730, 750),
-=======
->>>>>>> origin/main
 }
 
 # Airlines per geographic region
@@ -212,11 +188,7 @@ _AP = [
 _US_AIRPORTS = {"JFK", "LAX", "ORD", "DFW", "DEN", "SFO", "SEA", "MIA", "BOS", "ATL", "LAS", "PHX"}
 _EU_AIRPORTS = {"LHR", "CDG", "FRA", "AMS", "MAD", "FCO", "ZRH", "BCN"}
 _ME_AIRPORTS = {"DXB", "AUH", "DOH"}
-<<<<<<< HEAD
-_AP_AIRPORTS = {"HND", "NRT", "KIX", "ITM", "FUK", "CTS", "HKG", "SIN", "SYD", "ICN", "BKK"}
-=======
 _AP_AIRPORTS = {"NRT", "HKG", "SIN", "SYD", "ICN", "BKK"}
->>>>>>> origin/main
 
 CABIN_MULTIPLIERS: dict[str, float] = {
     "economy": 1.0,
@@ -233,15 +205,7 @@ BAGGAGE_INCLUDED: dict[str, bool] = {
 }
 
 # Departure hour slots (6 options per day)
-<<<<<<< HEAD
-_DEPARTURE_HOURS = [
-    5, 6, 7, 8, 9, 10, 11, 12,
-    13, 14, 15, 16, 17, 18, 19, 20,
-    21, 22,
-]
-=======
 _DEPARTURE_HOURS = [6, 8, 10, 13, 16, 19]
->>>>>>> origin/main
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -312,13 +276,7 @@ def search(
     baggage = BAGGAGE_INCLUDED[cabin_class]
 
     rng = random.Random(_seed(origin, destination, dep_date))
-<<<<<<< HEAD
-    max_flights = min(30, len(_DEPARTURE_HOURS))
-    min_flights = min(12, max_flights)
-    n_flights = rng.randint(min_flights, max_flights)
-=======
     n_flights = rng.randint(4, min(6, len(_DEPARTURE_HOURS)))
->>>>>>> origin/main
     chosen_hours = rng.sample(_DEPARTURE_HOURS, n_flights)
     chosen_hours.sort()
 

@@ -487,6 +487,7 @@ export default function PlanPage({ userEmail, onNavigate, onConfirmSelection, me
   const [selectedOutboundId, setSelectedOutboundId] = useState<string | null>(persisted?.selectedOutboundId ?? null);
   const [selectedInboundId, setSelectedInboundId] = useState<string | null>(persisted?.selectedInboundId ?? null);
   const [selectionGuidanceShown, setSelectionGuidanceShown] = useState(false);
+  const [flightGuidancePromptKey, setFlightGuidancePromptKey] = useState<string | null>(null);
   const [loadingFlights, setLoadingFlights] = useState(false);
   const [flightError, setFlightError] = useState<string | null>(null);
 
@@ -514,6 +515,28 @@ export default function PlanPage({ userEmail, onNavigate, onConfirmSelection, me
 
   const totalCost = (selectedOutbound?.price_per_person ?? 0) + (selectedInbound?.price_per_person ?? 0) + activitiesTotal;
   const selectedStyleConfig = useMemo(() => getStyleByTitle(selectedStyle), [selectedStyle]);
+
+  const getFlightGuidancePrompt = () => {
+    if (!destinationTargets.length) {
+      return 'I will guide your flight search step by step. Where are you traveling to? For example: Japan, Tokyo, or HND.';
+    }
+
+    if (!origin) {
+      return destinationTargets.length > 1
+        ? `Great. I can search across Japan airports (${destinationTargets.join(', ')}). What is your departure airport? For example: DFW.`
+        : `Great. I can search flights to ${destinationTargets[0]}. What is your departure airport? For example: DFW.`;
+    }
+
+    if (!returnTo) {
+      return `Nice. For the return trip, where should I bring you back from ${destinationTargets[0]}? For example: Dallas or DFW.`;
+    }
+
+    if (!selectedOutbound || !selectedInbound) {
+      return 'Your route is ready. I am showing outbound and inbound options below. Pick one of each and I will update the trip summary and total price.';
+    }
+
+    return 'Your flights are selected. If you want, I can now help you add activities or adjust the trip before you confirm.';
+  };
 
   useEffect(() => {
     const nextState: PersistedPlanState = {
@@ -572,6 +595,33 @@ export default function PlanPage({ userEmail, onNavigate, onConfirmSelection, me
       setSelectionGuidanceShown(true);
     }
   }, [selectedOutbound, selectedInbound, selectionGuidanceShown]);
+
+  useEffect(() => {
+    if (messages.length > 0) return;
+
+    const promptKey = [
+      selectedStyle,
+      origin ?? '',
+      destinationTargets.join(','),
+      returnTo ?? '',
+      selectedOutboundId ?? '',
+      selectedInboundId ?? '',
+    ].join('|');
+
+    if (flightGuidancePromptKey === promptKey) return;
+
+    appendAssistant(getFlightGuidancePrompt());
+    setFlightGuidancePromptKey(promptKey);
+  }, [
+    messages.length,
+    selectedStyle,
+    origin,
+    destinationTargets,
+    returnTo,
+    selectedOutboundId,
+    selectedInboundId,
+    flightGuidancePromptKey,
+  ]);
 
   const appendAssistant = (content: string) => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -654,6 +704,11 @@ export default function PlanPage({ userEmail, onNavigate, onConfirmSelection, me
     appendAssistant(`Suggestions for your vibe: ${cityList}.`);
     appendAssistant(`Top experiences: ${ideas}`);
     appendAssistant(style.followUpQuestions[0]);
+  };
+
+  const handleClearChat = () => {
+    setFlightGuidancePromptKey(null);
+    onClearChat?.();
   };
 
   const handleSend = async (text: string) => {
@@ -860,14 +915,16 @@ export default function PlanPage({ userEmail, onNavigate, onConfirmSelection, me
     <CompanionPanel
       messages={messages}
       onSendMessage={handleSend}
-      onClearChat={onClearChat}
+      onClearChat={handleClearChat}
       assistantName="Pathfinder AI"
       assistantSubtitle="Your Travel Curator"
       isOnline={true}
-      inputPlaceholder="Tell me destination and departure airport..."
+      inputPlaceholder="Tell me your destination, departure airport, or a flight shortcut..."
       quickActions={[
-        { icon: <SmallPlaneIcon />, label: 'Find flights to Tokyo from DFW', onClick: () => handleSend('I am going to Tokyo from DFW and returning to Dallas') },
+        { icon: <SmallPlaneIcon />, label: 'Start flight questions', onClick: () => handleSend('Help me plan my flights.') },
+        { icon: <SmallPlaneIcon />, label: 'Tokyo from DFW', onClick: () => handleSend('I am going to Tokyo from DFW and returning to Dallas') },
       ]}
+      quickActionsLabel="Flight shortcuts"
     />
   );
 
