@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   TopNav,
   PageLayout,
@@ -116,6 +116,11 @@ export default function ConfirmPage({
   const [detailBooking, setDetailBooking] = useState<BookingRead | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  // Only send Confirm-page messages to the agent — not the full PlanPage booking
+  // history. Sending the booking trigger context causes the agent to re-search
+  // and re-book (JetBlue) instead of simply modifying/cancelling the existing booking.
+  const sessionStartRef = useRef<number>(messages.length);
+
   const fetchBookings = () => {
     const token = accessToken
       || (() => {
@@ -188,9 +193,17 @@ export default function ConfirmPage({
     const assistantId = String(Date.now() + 1);
     const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', timestamp: ts };
 
-    const nextMessages = [...messages, userMsg];
-    setMessages([...nextMessages, assistantMsg]);
+    // UI: append to full shared history so chat panel shows everything
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
     setIsTyping(true);
+
+    // API: only send Confirm-page session messages so the agent never sees
+    // the PlanPage booking trigger (which causes it to re-book instead of modify/cancel).
+    const sessionMsgs = messages.slice(sessionStartRef.current);
+    const apiMessages = [
+      ...sessionMsgs.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: text },
+    ];
 
     try {
       const sessionRaw = localStorage.getItem('pathfinder_auth_session') || sessionStorage.getItem('pathfinder_auth_session');
@@ -202,9 +215,7 @@ export default function ConfirmPage({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
-        }),
+        body: JSON.stringify({ messages: apiMessages }),
       });
 
       if (!res.ok || !res.body) throw new Error(`Request failed: ${res.status}`);
