@@ -12,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
+from app.core.redis import close_redis, get_redis
 from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.request_logger import RequestLoggerMiddleware
 
@@ -34,7 +35,9 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("startup", app=settings.APP_NAME, env=settings.ENVIRONMENT)
+    await get_redis()   # connect eagerly so the first request is not penalised
     yield
+    await close_redis()
     logger.info("shutdown", app=settings.APP_NAME)
 
 

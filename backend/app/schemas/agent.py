@@ -12,4 +12,3 @@ class AgentMessage(BaseModel):
 
 class AgentChatRequest(BaseModel):
     messages: list[AgentMessage]
-    context: dict | None = None

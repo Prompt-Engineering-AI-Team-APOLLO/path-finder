@@ -416,9 +416,9 @@ class FlightService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to modify this booking",
             )
-        if booking.status == "cancelled":
+        if not booking.is_active():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot modify a cancelled booking",
+                detail=f"Booking {reference!r} is {booking.status!r} and cannot be modified or cancelled",
             )
         return booking

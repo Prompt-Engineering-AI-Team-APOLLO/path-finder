@@ -85,6 +85,18 @@ HTTP request
 - **`VectorService`** (`app/services/vector_service.py`) — Pinecone-backed vector store wrapping `AIService.embed()`. Gracefully degrades to no-op when `PINECONE_API_KEY` is unset. Supports `upsert`, `search`, `delete`.
 - **`FlightService`** / **`flight_mock_provider`** — flights use deterministic mock data; same search query always returns the same offers. No external API call.
 
+### Agent Architecture
+
+Pathfinder uses a **single stateless agent** (`AgentService`) for the flight-booking assistant.
+
+- **`/agent` vs `/ai` routers** — `/ai` exposes raw LLM primitives (chat, stream, embed, vector search) used by general chat and RAG. `/agent` runs the full tool-calling loop against `FlightService`.
+- **Pattern** — ReAct loop (up to 10 iterations): send history → if tool call, execute → append result → repeat; yield final text as SSE.
+- **Stateless** — conversation history is owned by the client; each request receives the full `messages` array. `user_id` is the only server-side context.
+- **Tool orchestration** — `parallel_tool_calls=False` enforces search-before-book ordering at the API level. Tools: `search_flights`, `book_flight`, `get_booking`, `modify_booking`, `cancel_booking`.
+- **Prompt & tool schemas** — all LLM-facing text lives in `app/core/prompts.py` for independent versioning.
+
+See `backend/AGENTS.md` for full details: tool catalog, refusal recovery, offer-ID alias system, history trimming, and error handling.
+
 ### Frontend
 
 The frontend uses **manual state-based navigation** (no React Router). `App.tsx` holds `page` state (`'login' | 'home' | 'plan' | 'confirm'`) and renders the matching page component. There's a dev-only page-switcher nav bar rendered in production builds as well — remove before shipping.

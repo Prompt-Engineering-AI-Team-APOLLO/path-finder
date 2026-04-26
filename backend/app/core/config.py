@@ -143,7 +143,36 @@ class Settings(BaseSettings):
     # Agentic booking loop — prioritises tool-calling reliability over cost
     AGENT_MODEL: str = "gpt-4o"
     AGENT_TEMPERATURE: float = 0.0    # deterministic tool arguments
-    AGENT_MAX_TOKENS: int = 1024      # booking confirmations are concise
+    AGENT_MAX_TOKENS: int = 1024      # max completion tokens per individual LLM call
+
+    # ── Agent loop termination controls ──────────────────────────────────────
+    #
+    # Three independent termination signals protect against runaway runs:
+    #
+    # AGENT_MAX_ITERATIONS (iteration cap)
+    #   Hard upper bound on the number of LLM calls per agent run.  A normal
+    #   booking flow uses 1–3 iterations (search → confirm → book).  10 gives
+    #   generous headroom for multi-step flows and refusal-recovery cycles while
+    #   preventing infinite loops from a broken refusal-detection circuit.
+    #   Set to 0 to disable (not recommended in production).
+    #
+    # AGENT_RUN_TIMEOUT_SECONDS (wall-clock timeout)
+    #   Caps the total elapsed time for one agent run, protecting against hung
+    #   OpenAI API calls or slow tool executions.  When the timeout fires,
+    #   the user receives a clear "took too long" message rather than an
+    #   indefinitely pending SSE stream.  120 s covers even slow multi-step
+    #   flows on degraded infrastructure.
+    #
+    # AGENT_MAX_TOKENS_PER_RUN (token budget)
+    #   Limits the sum of prompt + completion tokens across all LLM calls in a
+    #   single run.  Prevents a refusal-recovery loop from silently burning 10×
+    #   the expected tokens before hitting the iteration cap.  A normal
+    #   search-and-book flow uses ~3 000–6 000 tokens; 32 000 gives 5–10× headroom
+    #   while catching truly runaway cases.
+
+    AGENT_MAX_ITERATIONS: int = 10           # max LLM calls per run
+    AGENT_RUN_TIMEOUT_SECONDS: float = 120.0 # wall-clock timeout (seconds)
+    AGENT_MAX_TOKENS_PER_RUN: int = 32_000   # cumulative prompt+completion budget
 
     # RAG generation — constrained summarisation, cost-sensitive
     RAG_MODEL: str = "gpt-4o-mini"
