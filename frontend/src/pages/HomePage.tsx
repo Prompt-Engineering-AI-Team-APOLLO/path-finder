@@ -4,11 +4,32 @@ import {
   StepIndicator,
   CompanionPanel,
   CategoryCard,
-  EditorPickCard,
   Button,
   FlightCard,
 } from '../components/ui';
 import type { Message } from '../components/ui';
+import { HOTELS_CATEGORY_IMAGE, HOTEL_SUGGESTIONS } from '../data/hotels';
+import {
+  ACTIVITIES_FEATURE_IMAGE,
+  ACTIVITY_MOCK_MEDIA,
+  CAR_RENTAL_MOCK_DATA,
+  CAR_RENTALS_CATEGORY_IMAGE,
+  EDITOR_PICK_FEATURED,
+  EDITOR_PICK_MOCK_DATA,
+  FLIGHT_MOCK_MEDIA,
+  FLIGHTS_CATEGORY_IMAGE,
+  RESTAURANT_MOCK_DATA,
+  RESTAURANTS_CATEGORY_IMAGE,
+} from '../data/travelMocks';
+import type { MockHotel } from '../data/hotels';
+import type {
+  MockActivityMedia,
+  MockCarRental,
+  MockEditorPick,
+  MockEditorPickActivity,
+  MockFlightMedia,
+  MockRestaurantMedia,
+} from '../data/travelMocks';
 
 interface FlightOffer {
   offer_id: string;
@@ -153,43 +174,228 @@ const BedIcon = () => (
 );
 
 /* ── Featured card: Italy Activities ── */
-function ItalyTrendingCard() {
+function ItalyTrendingCard({ onOpenList }: { onOpenList: () => void }) {
+  const [flipped, setFlipped] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setFlipped(true)}
+      onMouseLeave={() => setFlipped(false)}
+      onFocus={() => setFlipped(true)}
+      onBlur={() => setFlipped(false)}
+      onClick={onOpenList}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        width: '100%',
+        cursor: 'pointer',
+        perspective: 1000,
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          minHeight: 200,
+          transformStyle: 'preserve-3d',
+          transition: 'transform 450ms ease',
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-xl)',
+            overflow: 'hidden',
+            backfaceVisibility: 'hidden',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: 'var(--shadow-md)',
+            background: 'linear-gradient(135deg, #0D4A4A 0%, #0A3240 50%, #1a1040 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <img
+            src={ACTIVITIES_FEATURE_IMAGE}
+            alt="Top activities in Italy"
+            draggable={false}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              opacity: 0.45,
+            }}
+          />
+          <div aria-hidden style={{
+            position: 'absolute', inset: 0,
+            background: 'radial-gradient(ellipse at 70% 40%, rgba(13,209,204,0.12) 0%, transparent 60%)',
+          }} />
+          <div aria-hidden style={{
+            position: 'absolute', top: '10%', right: '8%', opacity: 0.15,
+            fontSize: 80, lineHeight: 1,
+          }}>🗺</div>
+
+          <div style={{ position: 'relative', padding: '20px', textAlign: 'left' }}>
+            <Badge variant="trending">Trending Now</Badge>
+            <h3 style={{ color: 'white', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-tight)', margin: '10px 0 6px' }}>
+              Top Activities in Italy
+            </h3>
+            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'var(--text-sm)', margin: '0 0 16px', lineHeight: 'var(--leading-normal)' }}>
+              From private vineyard tours to coastal heli-rides
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <Button variant="primary" size="sm">Book Now</Button>
+              <Button variant="ghost" size="sm">View All</Button>
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: 'var(--shadow-md)',
+            backfaceVisibility: 'hidden',
+            transform: 'rotateY(180deg)',
+            background: 'linear-gradient(140deg, #111936 0%, #271850 100%)',
+            padding: 18,
+            textAlign: 'left',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-text-primary)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-lg)' }}>
+              Explore Premium Activities
+            </p>
+            <p style={{ margin: '8px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }}>
+              Flip complete. Tap to view mock activity list with images, durations, and pricing.
+            </p>
+          </div>
+          <p style={{ margin: 0, color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+            {ACTIVITY_MOCK_MEDIA.length} curated activities available
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function ActivityListCard({ activity }: { activity: MockActivityMedia }) {
   return (
     <div
       style={{
         borderRadius: 'var(--radius-xl)',
         overflow: 'hidden',
-        position: 'relative',
-        background: 'linear-gradient(135deg, #0D4A4A 0%, #0A3240 50%, #1a1040 100%)',
-        minHeight: 200,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-end',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: 'var(--shadow-md)',
+        border: '1px solid var(--color-border-medium)',
+        background: '#131833',
+        boxShadow: 'var(--shadow-card)',
       }}
     >
-      {/* Map illustration overlay */}
-      <div aria-hidden style={{
-        position: 'absolute', inset: 0,
-        background: 'radial-gradient(ellipse at 70% 40%, rgba(13,209,204,0.12) 0%, transparent 60%)',
-      }} />
-      <div aria-hidden style={{
-        position: 'absolute', top: '10%', right: '8%', opacity: 0.15,
-        fontSize: 80, lineHeight: 1,
-      }}>🗺</div>
-
-      <div style={{ position: 'relative', padding: '20px' }}>
-        <Badge variant="trending">Trending Now</Badge>
-        <h3 style={{ color: 'white', fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-tight)', margin: '10px 0 6px' }}>
-          Top Activities in Italy
-        </h3>
-        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'var(--text-sm)', margin: '0 0 16px', lineHeight: 'var(--leading-normal)' }}>
-          From private vineyard tours to coastal heli-rides
+      <div style={{ position: 'relative' }}>
+        <img
+          src={activity.image}
+          alt={activity.title}
+          style={{ width: '100%', height: 170, objectFit: 'cover' }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: 10,
+            bottom: 10,
+            background: 'rgba(8, 12, 24, 0.78)',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '999px',
+            padding: '4px 10px',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-semibold)',
+            maxWidth: '85%',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {activity.title}
+        </div>
+      </div>
+      <div style={{ padding: 14 }}>
+        <p style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+          {activity.title}
         </p>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Button variant="primary" size="sm">Book Now</Button>
-          <Button variant="ghost" size="sm">View All</Button>
+        <p style={{ margin: '6px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+          {activity.city}
+        </p>
+        <p style={{ margin: '8px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+          {activity.shortDescription}
+        </p>
+        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>{activity.duration}</span>
+          <span style={{ color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+            From ${activity.priceFrom} {activity.currency}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivitySuggestionModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(3, 6, 14, 0.78)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(1080px, 100%)',
+          borderRadius: 'var(--radius-3xl)',
+          border: '1px solid var(--color-border-medium)',
+          background: '#0F1325',
+          boxShadow: '0 28px 90px rgba(0,0,0,0.6)',
+          padding: 18,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase' }}>
+              Activity Suggestions
+            </p>
+            <h3 style={{ margin: '6px 0 0', color: 'var(--color-text-primary)', fontSize: 'var(--text-lg)' }}>
+              Mock activity list with photos and pricing
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', borderRadius: 'var(--radius-full)', width: 34, height: 34, cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+          {ACTIVITY_MOCK_MEDIA.map((activity) => (
+            <ActivityListCard key={activity.id} activity={activity} />
+          ))}
         </div>
       </div>
     </div>
@@ -197,47 +403,938 @@ function ItalyTrendingCard() {
 }
 
 /* ── Featured card: Car Rentals France ── */
-function CarRentalCard() {
+function CarRentalCard({ onOpenList }: { onOpenList: () => void }) {
+  const [flipped, setFlipped] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setFlipped(true)}
+      onMouseLeave={() => setFlipped(false)}
+      onFocus={() => setFlipped(true)}
+      onBlur={() => setFlipped(false)}
+      onClick={onOpenList}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        width: '100%',
+        minHeight: 200,
+        cursor: 'pointer',
+        perspective: 1000,
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          minHeight: 200,
+          transformStyle: 'preserve-3d',
+          transition: 'transform 450ms ease',
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-xl)',
+            overflow: 'hidden',
+            backfaceVisibility: 'hidden',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: 'var(--shadow-md)',
+            background: 'linear-gradient(160deg, #1a0d2e 0%, #2d1a4a 50%, #1a0a30 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <img
+            src={CAR_RENTALS_CATEGORY_IMAGE}
+            alt="Car rentals in France"
+            draggable={false}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              opacity: 0.42,
+            }}
+          />
+          <div aria-hidden style={{
+            position: 'absolute', inset: 0,
+            background: 'radial-gradient(ellipse at 30% 60%, rgba(112,71,235,0.14) 0%, transparent 65%)',
+          }} />
+          <div aria-hidden style={{
+            position: 'absolute', bottom: '30%', right: '-5%',
+            fontSize: 72, opacity: 0.12, transform: 'rotate(-5deg)',
+          }}>🚗</div>
+
+          <div style={{ position: 'relative', padding: '18px', textAlign: 'left' }}>
+            <Badge variant="curated">Exclusive Collection</Badge>
+            <h3 style={{ color: 'white', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-tight)', margin: '8px 0 4px' }}>
+              Car Rentals in France
+            </h3>
+            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 'var(--text-xs)', margin: 0 }}>
+              Vintage Classics & Modern Hypercars
+            </p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid var(--color-border-medium)',
+            boxShadow: 'var(--shadow-md)',
+            backfaceVisibility: 'hidden',
+            transform: 'rotateY(180deg)',
+            background: 'linear-gradient(140deg, #161532 0%, #321c52 100%)',
+            padding: 16,
+            textAlign: 'left',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-text-primary)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-lg)' }}>
+              Premium Car Options
+            </p>
+            <p style={{ margin: '8px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }}>
+              Flip complete. Tap to see mock car models, specs, and daily pricing.
+            </p>
+          </div>
+          <p style={{ margin: 0, color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+            {CAR_RENTAL_MOCK_DATA.length} rental cars available
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function CarRentalListCard({ car }: { car: MockCarRental }) {
   return (
     <div
       style={{
         borderRadius: 'var(--radius-xl)',
         overflow: 'hidden',
-        position: 'relative',
-        background: 'linear-gradient(160deg, #1a0d2e 0%, #2d1a4a 50%, #1a0a30 100%)',
-        minHeight: 200,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-end',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: 'var(--shadow-md)',
+        border: '1px solid var(--color-border-medium)',
+        background: '#131833',
+        boxShadow: 'var(--shadow-card)',
       }}
     >
-      {/* Car silhouette hint */}
-      <div aria-hidden style={{
-        position: 'absolute', bottom: '30%', right: '-5%',
-        fontSize: 72, opacity: 0.12, transform: 'rotate(-5deg)',
-      }}>🚗</div>
-      <div aria-hidden style={{
-        position: 'absolute', inset: 0,
-        background: 'radial-gradient(ellipse at 30% 60%, rgba(112,71,235,0.14) 0%, transparent 65%)',
-      }} />
+      <div style={{ position: 'relative' }}>
+        <img
+          src={car.image}
+          alt={car.name}
+          style={{ width: '100%', height: 170, objectFit: 'cover' }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: 10,
+            bottom: 10,
+            background: 'rgba(8, 12, 24, 0.78)',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '999px',
+            padding: '4px 10px',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-semibold)',
+            maxWidth: '85%',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {car.name}
+        </div>
+      </div>
+      <div style={{ padding: 14 }}>
+        <p style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+          {car.name}
+        </p>
+        <p style={{ margin: '6px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+          {car.location} · {car.category}
+        </p>
+        <p style={{ margin: '8px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+          {car.shortDescription}
+        </p>
+        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+            {car.transmission} · {car.seats} seats
+          </span>
+          <span style={{ color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+            ${car.pricePerDay}/day
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      <div style={{ position: 'relative', padding: '18px' }}>
-        <Badge variant="curated">Exclusive Collection</Badge>
-        <h3 style={{ color: 'white', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-tight)', margin: '8px 0 4px' }}>
-          Car Rentals in France
-        </h3>
-        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 'var(--text-xs)', margin: 0 }}>
-          Vintage Classics & Modern Hypercars
+function CarRentalSuggestionModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(3, 6, 14, 0.78)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(1080px, 100%)',
+          borderRadius: 'var(--radius-3xl)',
+          border: '1px solid var(--color-border-medium)',
+          background: '#0F1325',
+          boxShadow: '0 28px 90px rgba(0,0,0,0.6)',
+          padding: 18,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase' }}>
+              Car Rental Suggestions
+            </p>
+            <h3 style={{ margin: '6px 0 0', color: 'var(--color-text-primary)', fontSize: 'var(--text-lg)' }}>
+              Mock car list with images and daily pricing
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', borderRadius: 'var(--radius-full)', width: 34, height: 34, cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+          {CAR_RENTAL_MOCK_DATA.map((car) => (
+            <CarRentalListCard key={car.id} car={car} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditorPickFlipCard({ pick, onOpen }: { pick: MockEditorPick; onOpen: () => void }) {
+  const [flipped, setFlipped] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setFlipped(true)}
+      onMouseLeave={() => setFlipped(false)}
+      onFocus={() => setFlipped(true)}
+      onBlur={() => setFlipped(false)}
+      onClick={onOpen}
+      style={{
+        width: '100%',
+        border: 'none',
+        background: 'transparent',
+        cursor: 'pointer',
+        perspective: 1000,
+        minHeight: 280,
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          minHeight: 280,
+          transformStyle: 'preserve-3d',
+          transition: 'transform 500ms ease',
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-2xl)',
+            overflow: 'hidden',
+            border: '1.5px solid var(--color-border)',
+            boxShadow: 'var(--shadow-lg)',
+            backfaceVisibility: 'hidden',
+          }}
+        >
+          <img
+            src={pick.image}
+            alt={pick.title}
+            draggable={false}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(8,8,26,0.2) 0%, rgba(8,8,26,0.9) 72%, rgba(8,8,26,0.98) 100%)' }} />
+          <div style={{ position: 'relative', padding: 20, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', textAlign: 'left' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--gradient-primary)', borderRadius: 'var(--radius-full)', padding: '3px 12px', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'white' }}>
+              {pick.label}
+            </span>
+            <div>
+              <h3 style={{ color: 'white', fontSize: 'var(--text-2xl)', margin: '0 0 8px', letterSpacing: 'var(--tracking-tight)' }}>{pick.title}</h3>
+              <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: 'var(--text-sm)', margin: 0 }}>{pick.description}</p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-2xl)',
+            border: '1.5px solid var(--color-border)',
+            boxShadow: 'var(--shadow-lg)',
+            backfaceVisibility: 'hidden',
+            transform: 'rotateY(180deg)',
+            background: 'linear-gradient(140deg, #181334 0%, #251447 100%)',
+            padding: 20,
+            textAlign: 'left',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <p style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', margin: 0 }}>Tonight's Curated Lineup</p>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: '8px 0 0' }}>
+              {pick.activities.length} activities in {pick.city}
+            </p>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', margin: '8px 0 0' }}>
+              Tap to view full activity details and pricing.
+            </p>
+          </div>
+          <span style={{ color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+            Open Editor's Pick →
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function EditorPickActivityCard({ activity }: { activity: MockEditorPickActivity }) {
+  return (
+    <div style={{ borderRadius: 'var(--radius-xl)', overflow: 'hidden', border: '1px solid var(--color-border-medium)', background: '#131833', boxShadow: 'var(--shadow-card)' }}>
+      <img src={activity.image} alt={activity.name} style={{ width: '100%', height: 150, objectFit: 'cover' }} />
+      <div style={{ padding: 12 }}>
+        <p style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{activity.name}</p>
+        <p style={{ margin: '6px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>{activity.time} · {activity.location}</p>
+        <p style={{ margin: '8px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>{activity.description}</p>
+        <p style={{ margin: '10px 0 0', color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+          ${activity.price} {activity.currency}
         </p>
       </div>
     </div>
   );
 }
 
+function EditorPickSuggestionModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(3, 6, 14, 0.78)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 'min(1120px, 100%)', maxHeight: '85svh', overflow: 'auto', borderRadius: 'var(--radius-3xl)', border: '1px solid var(--color-border-medium)', background: '#0F1325', boxShadow: '0 28px 90px rgba(0,0,0,0.6)', padding: 18 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase' }}>Editor's Picks</p>
+            <h3 style={{ margin: '6px 0 0', color: 'var(--color-text-primary)', fontSize: 'var(--text-lg)' }}>Mock extracted activities and pricing</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', borderRadius: 'var(--radius-full)', width: 34, height: 34, cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {EDITOR_PICK_MOCK_DATA.map((pick) => (
+            <section key={pick.id} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-2xl)', padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ marginBottom: 10 }}>
+                <p style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)' }}>{pick.title}</p>
+                <p style={{ margin: '4px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>{pick.city} · {pick.description}</p>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                {pick.activities.map((activity) => (
+                  <EditorPickActivityCard key={activity.id} activity={activity} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HotelSuggestionFlipCard({ hotel, onOpen }: { hotel: MockHotel; onOpen: () => void }) {
+  const [flipped, setFlipped] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setFlipped(true)}
+      onMouseLeave={() => setFlipped(false)}
+      onFocus={() => setFlipped(true)}
+      onBlur={() => setFlipped(false)}
+      onClick={onOpen}
+      style={{
+        width: '100%',
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        perspective: 1000,
+        minHeight: 240,
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          minHeight: 240,
+          transformStyle: 'preserve-3d',
+          transition: 'transform 450ms ease',
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-2xl)',
+            overflow: 'hidden',
+            border: '1px solid var(--color-border-medium)',
+            boxShadow: 'var(--shadow-card)',
+            backfaceVisibility: 'hidden',
+            background: '#101322',
+          }}
+        >
+          <div style={{ position: 'relative' }}>
+            <img
+              src={hotel.image}
+              alt={hotel.name}
+              style={{ width: '100%', height: 170, objectFit: 'cover' }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: 10,
+                bottom: 10,
+                background: 'rgba(8, 12, 24, 0.78)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '999px',
+                padding: '4px 10px',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--weight-semibold)',
+                maxWidth: '85%',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {hotel.name}
+            </div>
+          </div>
+          <div style={{ padding: 12 }}>
+            <p style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{hotel.name}</p>
+            <p style={{ margin: '4px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>{hotel.location}</p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-2xl)',
+            border: '1px solid var(--color-border-medium)',
+            boxShadow: 'var(--shadow-card)',
+            background: 'linear-gradient(140deg, #151a33 0%, #24183a 100%)',
+            color: 'var(--color-text-primary)',
+            padding: 14,
+            textAlign: 'left',
+            transform: 'rotateY(180deg)',
+            backfaceVisibility: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{hotel.name}</p>
+            <p style={{ margin: '6px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>{hotel.shortDescription}</p>
+          </div>
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>${hotel.pricePerNight}/night</p>
+            <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>Tap to view all hotel mock data</p>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function HotelSuggestionModal({ onClose, onOpenAll }: { onClose: () => void; onOpenAll: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(3, 6, 14, 0.78)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(1040px, 100%)',
+          borderRadius: 'var(--radius-3xl)',
+          border: '1px solid var(--color-border-medium)',
+          background: '#0F1325',
+          boxShadow: '0 28px 90px rgba(0,0,0,0.6)',
+          padding: 18,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase' }}>Hotel Suggestions</p>
+            <h3 style={{ margin: '6px 0 0', color: 'var(--color-text-primary)', fontSize: 'var(--text-lg)' }}>Flip cards to preview top stays</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', borderRadius: 'var(--radius-full)', width: 34, height: 34, cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          {HOTEL_SUGGESTIONS.map((hotel) => (
+            <HotelSuggestionFlipCard key={hotel.id} hotel={hotel} onOpen={onOpenAll} />
+          ))}
+        </div>
+
+        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button variant="primary" size="sm" onClick={onOpenAll}>
+            View All Hotels →
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FlightSuggestionFlipCard({ flight }: { flight: MockFlightMedia }) {
+  const [flipped, setFlipped] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setFlipped(true)}
+      onMouseLeave={() => setFlipped(false)}
+      onFocus={() => setFlipped(true)}
+      onBlur={() => setFlipped(false)}
+      style={{
+        width: '100%',
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        perspective: 1000,
+        minHeight: 250,
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          minHeight: 250,
+          transformStyle: 'preserve-3d',
+          transition: 'transform 450ms ease',
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-2xl)',
+            overflow: 'hidden',
+            border: '1px solid var(--color-border-medium)',
+            boxShadow: 'var(--shadow-card)',
+            backfaceVisibility: 'hidden',
+            background: '#101322',
+          }}
+        >
+          <div style={{ position: 'relative' }}>
+            <img
+              src={flight.image}
+              alt={`${flight.originCode} to ${flight.destinationCode}`}
+              style={{ width: '100%', height: 160, objectFit: 'cover' }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: 10,
+                bottom: 10,
+                background: 'rgba(8, 12, 24, 0.78)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '999px',
+                padding: '4px 10px',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--weight-semibold)',
+                maxWidth: '85%',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {flight.airline}
+            </div>
+          </div>
+          <div style={{ padding: 12 }}>
+            <p style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+              {flight.originCode} → {flight.destinationCode}
+            </p>
+            <p style={{ margin: '4px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+              {flight.originCity} to {flight.destinationCity}
+            </p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-2xl)',
+            border: '1px solid var(--color-border-medium)',
+            boxShadow: 'var(--shadow-card)',
+            background: 'linear-gradient(140deg, #101a37 0%, #1e1742 100%)',
+            color: 'var(--color-text-primary)',
+            padding: 14,
+            textAlign: 'left',
+            transform: 'rotateY(180deg)',
+            backfaceVisibility: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{flight.airline} · {flight.flightNumber}</p>
+            <p style={{ margin: '6px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+              Origin: {flight.originCode} ({flight.originCity})
+            </p>
+            <p style={{ margin: '4px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+              Destination: {flight.destinationCode} ({flight.destinationCity})
+            </p>
+          </div>
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+              ${flight.pricePerPerson}/{flight.currency} per traveler
+            </p>
+            <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+              Mock flight suggestion
+            </p>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function FlightSuggestionModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(3, 6, 14, 0.78)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(1040px, 100%)',
+          borderRadius: 'var(--radius-3xl)',
+          border: '1px solid var(--color-border-medium)',
+          background: '#0F1325',
+          boxShadow: '0 28px 90px rgba(0,0,0,0.6)',
+          padding: 18,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase' }}>
+              Flight Suggestions
+            </p>
+            <h3 style={{ margin: '6px 0 0', color: 'var(--color-text-primary)', fontSize: 'var(--text-lg)' }}>
+              Flip cards to view origin, destination, and pricing
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', borderRadius: 'var(--radius-full)', width: 34, height: 34, cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          {FLIGHT_MOCK_MEDIA.map((flight) => (
+            <FlightSuggestionFlipCard key={flight.id} flight={flight} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RestaurantCategoryFlipCard({ onOpenList }: { onOpenList: () => void }) {
+  const [flipped, setFlipped] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setFlipped(true)}
+      onMouseLeave={() => setFlipped(false)}
+      onFocus={() => setFlipped(true)}
+      onBlur={() => setFlipped(false)}
+      onClick={onOpenList}
+      style={{
+        width: '100%',
+        minHeight: 0,
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        perspective: 1000,
+        aspectRatio: '4/3',
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: '100%',
+          transformStyle: 'preserve-3d',
+          transition: 'transform 450ms ease',
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-2xl)',
+            overflow: 'hidden',
+            backfaceVisibility: 'hidden',
+            border: '1px solid var(--color-border)',
+            boxShadow: 'var(--shadow-card)',
+          }}
+        >
+          <img
+            src={RESTAURANTS_CATEGORY_IMAGE}
+            alt="Restaurant experiences"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+          <div style={{ position: 'absolute', inset: 0, background: 'var(--gradient-card-overlay)' }} />
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', textAlign: 'left' }}>
+            <div style={{ color: 'rgba(255,255,255,0.75)', marginBottom: 6 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
+                <path d="M18 2h-2v7h-3V2H11v7H8.5a2.5 2.5 0 00-2.5 2.5V22h16V11.5A2.5 2.5 0 0019.5 9H18V2z"/>
+              </svg>
+            </div>
+            <p style={{ color: 'white', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)', margin: 0 }}>
+              Restaurants
+            </p>
+            <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 'var(--text-xs)', marginTop: 2 }}>
+              Michelin-Starred Experiences
+            </p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-2xl)',
+            border: '1px solid var(--color-border-medium)',
+            boxShadow: 'var(--shadow-card)',
+            background: 'linear-gradient(140deg, #2a1a0a 0%, #1a0a0a 100%)',
+            color: 'var(--color-text-primary)',
+            padding: 14,
+            textAlign: 'left',
+            transform: 'rotateY(180deg)',
+            backfaceVisibility: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+              Curated Dining Collection
+            </p>
+            <p style={{ margin: '6px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+              Flip complete. Tap to view mock restaurants, pricing, and details.
+            </p>
+          </div>
+          <p style={{ margin: 0, color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+            {RESTAURANT_MOCK_DATA.length} restaurants available
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function RestaurantListCard({ restaurant }: { restaurant: MockRestaurantMedia }) {
+  return (
+    <div
+      style={{
+        borderRadius: 'var(--radius-xl)',
+        overflow: 'hidden',
+        border: '1px solid var(--color-border-medium)',
+        background: '#131833',
+        boxShadow: 'var(--shadow-card)',
+      }}
+    >
+      <div style={{ position: 'relative' }}>
+        <img
+          src={restaurant.image}
+          alt={restaurant.name}
+          style={{ width: '100%', height: 170, objectFit: 'cover' }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: 10,
+            bottom: 10,
+            background: 'rgba(8, 12, 24, 0.78)',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '999px',
+            padding: '4px 10px',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-semibold)',
+            maxWidth: '85%',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {restaurant.name}
+        </div>
+      </div>
+      <div style={{ padding: 14 }}>
+        <p style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+          {restaurant.name}
+        </p>
+        <p style={{ margin: '6px 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+          {restaurant.city} · {restaurant.cuisine}
+        </p>
+        <p style={{ margin: '8px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+          {restaurant.shortDescription}
+        </p>
+        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>
+            Avg cost {restaurant.priceTier}
+          </span>
+          <span style={{ color: 'var(--color-primary-light)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+            ${restaurant.averageCostPerPerson}/person
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RestaurantSuggestionModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(3, 6, 14, 0.78)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(1080px, 100%)',
+          borderRadius: 'var(--radius-3xl)',
+          border: '1px solid var(--color-border-medium)',
+          background: '#0F1325',
+          boxShadow: '0 28px 90px rgba(0,0,0,0.6)',
+          padding: 18,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase' }}>
+              Restaurant Suggestions
+            </p>
+            <h3 style={{ margin: '6px 0 0', color: 'var(--color-text-primary)', fontSize: 'var(--text-lg)' }}>
+              Mock restaurant list with images and pricing
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', borderRadius: 'var(--radius-full)', width: 34, height: 34, cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+          {RESTAURANT_MOCK_DATA.map((restaurant) => (
+            <RestaurantListCard key={restaurant.id} restaurant={restaurant} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const STEPS = [
-  { number: '01', label: 'Welcome' },
+  { number: '01', label: 'Home' },
   { number: '02', label: 'Plan' },
   { number: '03', label: 'Confirm' },
 ];
@@ -279,6 +1376,12 @@ export default function HomePage({ userEmail, accessToken, onOpenProfile, onSign
   const [isTyping, setIsTyping] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [detailFlight, setDetailFlight] = useState<FlightOffer | null>(null);
+  const [showHotelSuggestions, setShowHotelSuggestions] = useState(false);
+  const [showFlightSuggestions, setShowFlightSuggestions] = useState(false);
+  const [showActivitySuggestions, setShowActivitySuggestions] = useState(false);
+  const [showRestaurantSuggestions, setShowRestaurantSuggestions] = useState(false);
+  const [showCarRentalSuggestions, setShowCarRentalSuggestions] = useState(false);
+  const [showEditorPickSuggestions, setShowEditorPickSuggestions] = useState(false);
   const conversationId = useRef<string>(crypto.randomUUID());
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -896,7 +1999,8 @@ Rules:
                 <CategoryCard
                   title="Hotels"
                   subtitle="428 Signature Properties"
-                  imageCss="linear-gradient(160deg, #1a2a4a 0%, #0d1e35 100%)"
+                  image={HOTELS_CATEGORY_IMAGE}
+                  onClick={() => setShowHotelSuggestions(true)}
                   icon={
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
                       <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>
@@ -906,41 +2010,27 @@ Rules:
                 <CategoryCard
                   title="Flights"
                   subtitle="Global Routes & Private Charters"
-                  imageCss="linear-gradient(160deg, #0a1a35 0%, #1a0d2e 100%)"
+                  image={FLIGHTS_CATEGORY_IMAGE}
+                  onClick={() => setShowFlightSuggestions(true)}
                   icon={
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
                       <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
                     </svg>
                   }
                 />
-                <CategoryCard
-                  title="Restaurants"
-                  subtitle="Michelin-Starred Experiences"
-                  imageCss="linear-gradient(160deg, #2a1a0a 0%, #1a0a0a 100%)"
-                  icon={
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.8">
-                      <path d="M18 2h-2v7h-3V2H11v7H8.5a2.5 2.5 0 00-2.5 2.5V22h16V11.5A2.5 2.5 0 0019.5 9H18V2z"/>
-                    </svg>
-                  }
-                />
+                <RestaurantCategoryFlipCard onOpenList={() => setShowRestaurantSuggestions(true)} />
               </div>
 
               {/* Row 2: Italy card + Car card */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 14 }}>
-                <ItalyTrendingCard />
-                <CarRentalCard />
+                <ItalyTrendingCard onOpenList={() => setShowActivitySuggestions(true)} />
+                <CarRentalCard onOpenList={() => setShowCarRentalSuggestions(true)} />
               </div>
 
               {/* Row 3: Editor's pick */}
-              <EditorPickCard
-                imageCss="linear-gradient(135deg, #1a0a1a 0%, #0a1a2a 35%, #1a2a0a 100%)"
-                label="Editor's Pick"
-                title="Midnight in Florence"
-                description="A private walking tour through the Oltrarno district, followed by a candlelit dinner in a 16th-century palazzo — exclusively curated for Pathfinder members."
-                ctaLabel="Book Now"
-                onCta={() => {}}
-                secondaryCtaLabel="View All"
-                onSecondaryCta={() => {}}
+              <EditorPickFlipCard
+                pick={EDITOR_PICK_FEATURED}
+                onOpen={() => setShowEditorPickSuggestions(true)}
               />
             </>
           )}
@@ -948,6 +2038,30 @@ Rules:
       </div>
 
       {detailFlight && <FlightDetailModal flight={detailFlight} onClose={() => setDetailFlight(null)} />}
+      {showHotelSuggestions && (
+        <HotelSuggestionModal
+          onClose={() => setShowHotelSuggestions(false)}
+          onOpenAll={() => {
+            setShowHotelSuggestions(false);
+            onNavigate?.('hotels');
+          }}
+        />
+      )}
+      {showFlightSuggestions && (
+        <FlightSuggestionModal onClose={() => setShowFlightSuggestions(false)} />
+      )}
+      {showActivitySuggestions && (
+        <ActivitySuggestionModal onClose={() => setShowActivitySuggestions(false)} />
+      )}
+      {showRestaurantSuggestions && (
+        <RestaurantSuggestionModal onClose={() => setShowRestaurantSuggestions(false)} />
+      )}
+      {showCarRentalSuggestions && (
+        <CarRentalSuggestionModal onClose={() => setShowCarRentalSuggestions(false)} />
+      )}
+      {showEditorPickSuggestions && (
+        <EditorPickSuggestionModal onClose={() => setShowEditorPickSuggestions(false)} />
+      )}
     </div>
   );
 }

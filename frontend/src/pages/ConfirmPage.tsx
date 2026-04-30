@@ -58,7 +58,7 @@ const ChevronIcon = () => (
 );
 
 const CONFIRM_STEPS = [
-  { number: '01', label: 'Welcome' },
+  { number: '01', label: 'Home' },
   { number: '02', label: 'Plan' },
   { number: '03', label: 'Confirm' },
 ];

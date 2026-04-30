@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage'
 import PlanPage from './pages/PlanPage'
 import ConfirmPage from './pages/ConfirmPage'
 import BookingPage from './pages/BookingPage'
+import HotelsPage from './pages/HotelsPage'
 import type { FlightOffer, BookingRead } from './pages/BookingPage'
 import type { Message } from './components/ui'
 
@@ -15,7 +16,7 @@ const BOOKING_KEY = 'pathfinder_booking'
 const BOOKING_CTX_KEY = 'pathfinder_booking_ctx'
 
 // ── Types ───────────────────────────────────────────────────────────────────
-type Page = 'login' | 'home' | 'plan' | 'confirm' | 'booking'
+type Page = 'login' | 'home' | 'plan' | 'confirm' | 'booking' | 'hotels'
 
 type AuthSession = {
   email: string
@@ -69,7 +70,7 @@ const loadPage = (): Page => {
   const session = loadSession()
   if (!session) return 'login'
   const stored = localStorage.getItem(PAGE_KEY) as Page | null
-  const validPages: Page[] = ['home', 'plan', 'confirm']
+  const validPages: Page[] = ['home', 'plan', 'confirm', 'hotels']
   // 'booking' is not restored on refresh (context lost); fallback to home
   return stored && validPages.includes(stored) ? stored : 'home'
 }
@@ -293,6 +294,14 @@ export default function App() {
           rawFlightResults={rawFlightResults}
           passengerCount={passengerCount}
           setConfirmedBooking={setConfirmedBooking}
+          {...sharedChat}
+        />
+      )}
+
+      {page === 'hotels' && (
+        <HotelsPage
+          userEmail={session?.email}
+          onNavigate={navigate}
           {...sharedChat}
         />
       )}
